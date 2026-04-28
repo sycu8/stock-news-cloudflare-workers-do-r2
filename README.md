@@ -1,45 +1,45 @@
 # VN Market Daily Worker
 
-Website tin nhanh chung khoan Viet Nam chay tren Cloudflare Workers (TypeScript + Hono), tu dong cap nhat 5 phut/lan tu RSS va nguon da phe duyet, tong hop dashboard web than thien mobile.
+A production-ready Vietnam stock market news website running on Cloudflare Workers (TypeScript + Hono), with a 5-minute automated refresh cycle, curated sources, and a mobile-friendly dashboard.
 
-## Tinh nang hien tai
+## Current Features
 
-- Crawl tin tuc tu dong tu `RSS` va `html_list` (co check `robots.txt` voi nguon cho phep crawl).
-- Quan ly nguon dong bang D1 (`news_sources`), gom them/bat-tat/xoa tu trang admin.
-- Tu dong refresh theo `Cron Trigger` moi 5 phut (`*/5 * * * *`).
-- Luu du lieu bai viet, bao cao ngay, media briefs, lich su crawl trong D1.
-- Cache payload trang chu bang KV de giam tai.
-- Ho tro R2 de phuc vu asset (`/assets/*`) va luu anh dai dien sinh bang AI.
-- Lam giau bai viet:
-  - trich `og:image` tu bai goc,
-  - tom tat bang Workers AI/OpenAI fallback,
-  - neu thieu anh thi co the sinh anh tu noi dung.
-- UI tong hop:
-  - tin noi bat + hot keywords,
-  - loc theo ngay/tu khoa/source/sentiment,
-  - phan trang,
-  - ban tin van & media trong ngay,
-  - du lieu thi truong (CafeF),
-  - lich su cap nhat thong minh theo sentiment va bien dong.
+- Automatically crawls news from `RSS` and approved `html_list` sources (with `robots.txt` checks where applicable).
+- Dynamic source management in D1 (`news_sources`) via admin UI (create/toggle/delete).
+- Scheduled refresh via Cloudflare Cron every 5 minutes (`*/5 * * * *`).
+- Stores articles, daily reports, media briefs, and crawl run logs in D1.
+- Caches homepage/API payloads in KV for faster responses.
+- Serves assets from R2 (`/assets/*`) and stores AI-generated thumbnails.
+- Article enrichment pipeline:
+  - extracts source image (`og:image`) when available,
+  - summarizes content with Workers AI (OpenAI fallback),
+  - generates representative images when needed.
+- Unified UI:
+  - featured/hot articles and hot keywords,
+  - filter by date/keyword/source/sentiment,
+  - pagination,
+  - daily briefs & media section,
+  - market board from CafeF data,
+  - smart intraday history timeline with sentiment/change highlights.
 - SEO/UX:
   - metadata, Open Graph, JSON-LD,
   - logo + favicon,
-  - font Montserrat,
-  - menu mobile, back-to-top, auto refresh client moi 5 phut khi co du lieu moi.
+  - Google Font Montserrat,
+  - mobile navigation, back-to-top, and client auto-refresh every 5 minutes when data changes.
 
-## Kien truc nhanh
+## Architecture
 
-- Runtime: Cloudflare Workers.
-- Framework: Hono.
+- Runtime: Cloudflare Workers
+- Framework: Hono
 - Storage:
-  - D1: bai viet, reports, media, source config, crawl runs.
-  - KV: cache payload, view counters, history snapshot.
-  - R2: logo/fallback assets/AI-generated thumbnails.
+  - D1: articles, reports, media items, source config, crawl runs
+  - KV: cached payload, view counters, report history snapshots
+  - R2: logo/fallback assets/AI-generated thumbnails
 - AI:
-  - Workers AI (`env.AI`) cho tom tat va tao anh.
-  - OpenAI la fallback neu co `OPENAI_API_KEY`.
+  - Workers AI (`env.AI`) for summarization/image generation
+  - OpenAI as fallback when `OPENAI_API_KEY` is provided
 
-## Cau truc thu muc chinh
+## Main Project Structure
 
 ```text
 .
@@ -71,46 +71,46 @@ Website tin nhanh chung khoan Viet Nam chay tren Cloudflare Workers (TypeScript 
 └─ wrangler.toml
 ```
 
-## Yeu cau he thong
+## System Requirements
 
 - Node.js 20+
 - Wrangler 4+
-- Tai khoan Cloudflare co quyen D1, KV, R2, Workers AI
+- Cloudflare account with D1, KV, R2, and Workers AI access
 
-## Cai dat local
+## Local Setup
 
-1. Cai dependency:
+1. Install dependencies:
    - `npm install`
-2. Tao file bien moi truong local:
-   - copy `.env.example` -> `.dev.vars`
-3. Dang nhap Cloudflare:
+2. Create local environment file:
+   - copy `.env.example` to `.dev.vars`
+3. Authenticate Cloudflare:
    - `npx wrangler login`
-4. Tao resource (neu chua co):
+4. Create resources (if not created yet):
    - D1: `npx wrangler d1 create vn_market_news`
    - KV: `npx wrangler kv namespace create CACHE`
    - KV preview: `npx wrangler kv namespace create CACHE --preview`
    - R2: `npx wrangler r2 bucket create vn-market-assets`
-5. Dien ID vao `wrangler.toml` (D1/KV/R2/account).
-6. Apply migration:
+5. Put generated IDs into `wrangler.toml` (D1/KV/R2/account).
+6. Apply migrations:
    - local: `npm run migrate:local`
    - remote: `npm run migrate:remote`
-7. Chay local:
+7. Run locally:
    - `npm run dev`
 
-## Bien moi truong va secrets
+## Environment Variables and Secrets
 
-Trong `.dev.vars`:
+In `.dev.vars`:
 
-- `ADMIN_REFRESH_TOKEN` (bat buoc)
-- `OPENAI_API_KEY` (tuy chon)
-- `OPENAI_MODEL` (mac dinh `gpt-5.5`)
+- `ADMIN_REFRESH_TOKEN` (required)
+- `OPENAI_API_KEY` (optional)
+- `OPENAI_MODEL` (default: `gpt-5.5`)
 
-Set production secret:
+Set production secrets:
 
 - `npx wrangler secret put ADMIN_REFRESH_TOKEN`
 - `npx wrangler secret put OPENAI_API_KEY`
 
-Trong `wrangler.toml` hien tai dang dung:
+Current key bindings in `wrangler.toml`:
 
 - `DB` (D1 binding)
 - `CACHE` (KV binding)
@@ -118,40 +118,40 @@ Trong `wrangler.toml` hien tai dang dung:
 - `AI` (Workers AI binding)
 - `crons = ["*/5 * * * *"]`
 
-## API va route quan trong
+## Key Routes and API
 
-- `GET /`: trang tong hop.
-- `GET /article?url=<encoded_url>`: trang chi tiet bai viet.
-- `GET /api/news/today`: JSON feed cho ngay hien tai (co filter query).
-- `GET /rss/today`: RSS 2.0 tu danh sach bai trong ngay.
-- `POST /admin/refresh`: ep refresh thu cong (header `x-admin-token`).
-- `GET /admin/sources?token=<ADMIN_REFRESH_TOKEN>`: UI quan ly source.
-- `POST /admin/sources`: them source moi (`rss`/`html_list`).
-- `POST /admin/sources/:id/toggle`: bat/tat source.
-- `POST /admin/sources/:id/delete`: xoa source custom.
-- `GET /assets/*`: phuc vu static/thumbnail tu R2.
+- `GET /`: homepage dashboard.
+- `GET /article?url=<encoded_url>`: article detail page.
+- `GET /api/news/today`: JSON feed for current day (supports filters).
+- `GET /rss/today`: RSS 2.0 feed for today.
+- `POST /admin/refresh`: manually trigger refresh (`x-admin-token` header).
+- `GET /admin/sources?token=<ADMIN_REFRESH_TOKEN>`: source management UI.
+- `POST /admin/sources`: add source (`rss` or `html_list`).
+- `POST /admin/sources/:id/toggle`: enable/disable source.
+- `POST /admin/sources/:id/delete`: delete custom source.
+- `GET /assets/*`: serves static assets/thumbnails from R2.
 
-## Van hanh
+## Operations
 
-- Cron se tu chay moi 5 phut, crawl tin moi, cap nhat report, media, sentiment.
-- Frontend co script check update moi 5 phut va tu reload neu payload thay doi.
-- De trigger tay:
+- Cron runs every 5 minutes to fetch new content and update reports/media/sentiment.
+- Frontend polls every 5 minutes and auto-reloads when fresh data is detected.
+- Manual trigger:
   - `curl -X POST http://127.0.0.1:8787/admin/refresh -H "x-admin-token: <token>"`
 
-## Trien khai production
+## Production Deployment
 
-1. Kiem tra `wrangler.toml` da dung account va cac binding.
-2. Dam bao migration da apply remote:
+1. Verify `wrangler.toml` account and all bindings.
+2. Ensure remote migrations are applied:
    - `npm run migrate:remote`
 3. Deploy:
    - `npm run deploy`
-4. Test nhanh:
+4. Smoke test:
    - `/`
    - `/api/news/today`
    - `/admin/sources?token=...`
 
-## Luu y nghiep vu
+## Business Notes
 
-- Noi dung "kich ban thi truong (heuristic)" chi mang tinh tham khao.
-- Khong phai khuyen nghi dau tu.
-- Ton trong robots/terms cua nguon khi bat crawl HTML.
+- "Market scenario (heuristic)" content is informational only.
+- This service is not investment advice.
+- Respect source robots/terms before enabling HTML crawling.
