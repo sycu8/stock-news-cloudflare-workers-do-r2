@@ -244,6 +244,7 @@ export function renderHomePage({
       const posPct = Math.round((sentiment.positive / total) * 100);
       const neuPct = Math.round((sentiment.neutral / total) * 100);
       const negPct = 100 - posPct - neuPct;
+      const needsExpand = [h.overviewVi, h.outlookVi, h.assumptionsVi || ""].some((text) => normalizeText(text).length > 240);
       return `<article class="historyPanel ${idx === 0 ? "active" : ""}" id="history-${idx}">
         <p class="meta">Cập nhật lúc ${escapeHtml(formatVietnamDateTimeDisplay(h.updatedAt))}</p>
         <div class="historyKpis">
@@ -257,9 +258,16 @@ export function renderHomePage({
           <span class="seg neu" style="width:${neuPct}%"></span>
           <span class="seg neg" style="width:${negPct}%"></span>
         </div>
-        <p><strong>Tổng quan:</strong> ${escapeHtml(h.overviewVi)}</p>
-        <p><strong>Outlook:</strong> ${escapeHtml(h.outlookVi)}</p>
-        <p><strong>Giả định:</strong> ${escapeHtml(h.assumptionsVi || "Đang cập nhật")}</p>
+        <div class="historyContentWrap">
+          ${renderHistoryTextBlock("Tổng quan", h.overviewVi)}
+          ${renderHistoryTextBlock("Outlook", h.outlookVi)}
+          ${renderHistoryTextBlock("Giả định", h.assumptionsVi || "Đang cập nhật")}
+        </div>
+        ${
+          needsExpand
+            ? `<button type="button" class="historyExpandBtn" data-expand-target="history-${idx}" aria-expanded="false">Xem thêm</button>`
+            : ""
+        }
       </article>`;
     })
     .join("");
@@ -352,6 +360,27 @@ export function renderHomePage({
       .historyPanel.active{ display:block; }
       .historyKpis{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
       .historyKpi{ font-size:.8rem; border-radius:999px; padding:3px 8px; border:1px solid var(--border); background: color-mix(in srgb, var(--surface2) 92%, transparent); }
+      .overviewReadable p { margin: 8px 0; line-height: 1.55; }
+      .overviewReadable ul, .historyTextBody ul { margin: 8px 0; padding-left: 18px; display: grid; gap: 8px; }
+      .historyContentWrap { margin-top: 10px; display: grid; gap: 10px; }
+      .historyTextBlock { border-top: 1px dashed color-mix(in srgb, var(--border) 72%, transparent); padding-top: 8px; }
+      .historyTextTitle { margin: 0 0 4px; font-size: .92rem; }
+      .historyTextPreview { margin: 0; color: var(--muted); line-height: 1.55; }
+      .historyTextBody { display: none; }
+      .historyPanel.expanded .historyTextBody { display: block; }
+      .historyPanel.expanded .historyTextPreview { display: none; }
+      .historyExpandBtn{
+        margin-top: 10px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface2) 92%, transparent);
+        color: var(--text);
+        font: inherit;
+        font-size: .88rem;
+        cursor: pointer;
+      }
+      .historyExpandBtn:hover{ border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
       .warning { border-left: 4px solid #f59e0b; }
       .disclaimer { font-size: 0.9rem; color: var(--muted); }
       .langHint { font-size: 0.85rem; color: rgba(255,255,255,0.85); }
@@ -504,7 +533,7 @@ export function renderHomePage({
       </div>
       <section class="panel">
         <h2 id="overviewTitle">Tổng quan thị trường trong ngày</h2>
-        <p id="overviewText">${escapeHtml(report.overviewVi)}</p>
+        <div id="overviewText" class="overviewReadable">${renderReadableText(report.overviewVi)}</div>
         ${
           reportHistory.length > 0
             ? `<h3 style="margin:14px 0 8px;">Lịch sử cập nhật trong ngày</h3><div class="historySmart"><div class="historyTabs">${historyTabButtons}</div><div>${historyTabPanels}</div></div>`
@@ -640,6 +669,17 @@ export function renderHomePage({
           if (id) document.getElementById(id)?.classList.add("active");
         });
       });
+      const expandButtons = Array.from(document.querySelectorAll(".historyExpandBtn"));
+      expandButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const targetId = btn.getAttribute("data-expand-target");
+          const panel = targetId ? document.getElementById(targetId) : null;
+          if (!panel) return;
+          const expanded = panel.classList.toggle("expanded");
+          btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+          btn.textContent = expanded ? "Thu gọn" : "Xem thêm";
+        });
+      });
 
       // Auto refresh every 5 minutes when fresh crawl is available.
       const currentCachedAt = ${JSON.stringify(updatedAt ?? "")};
@@ -721,6 +761,41 @@ function compressHistoryEntries(entries: ReportHistoryEntry[], current: DailyRep
 
 function normalizeText(input: string): string {
   return input.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function renderHistoryTextBlock(title: string, text: string): string {
+  const preview = `${trimToLength(text, 190)}${normalizeText(text).length > 190 ? "..." : ""}`;
+  return `<div class="historyTextBlock">
+    <p class="historyTextTitle"><strong>${escapeHtml(title)}:</strong></p>
+    <p class="historyTextPreview">${escapeHtml(preview)}</p>
+    <div class="historyTextBody">${renderReadableText(text)}</div>
+  </div>`;
+}
+
+function renderReadableText(input: string): string {
+  const compact = input.replace(/\s+/g, " ").trim();
+  if (!compact) return "<p>Đang cập nhật.</p>";
+  const starParts = compact
+    .split(/\s*\*\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (starParts.length > 1) {
+    return `<ul>${starParts.map((part) => `<li>${escapeHtml(part)}</li>`).join("")}</ul>`;
+  }
+  const sentenceParts = compact
+    .split(/(?<=[.!?])\s+/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (sentenceParts.length <= 1) {
+    return `<p>${escapeHtml(compact)}</p>`;
+  }
+  return sentenceParts.map((part) => `<p>${escapeHtml(part)}</p>`).join("");
+}
+
+function trimToLength(input: string, maxLength: number): string {
+  const compact = input.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact;
+  return compact.slice(0, Math.max(0, maxLength - 1)).trimEnd();
 }
 
 export function renderArticleDetailPage(params: {
