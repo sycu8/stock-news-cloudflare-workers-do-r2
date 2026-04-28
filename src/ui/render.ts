@@ -345,6 +345,7 @@ export function renderHomePage({
       .header { background: linear-gradient(135deg, #0f172a 0%, #111827 100%); color: #fff; border-radius: 14px; padding: 18px; margin-bottom: 16px; }
       .headerTop { display:flex; align-items:center; gap:14px; }
       .brandLogo { width:72px; height:72px; border-radius: 14px; object-fit: cover; background: #fff; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.18); flex: 0 0 auto; }
+      .brandHomeLink{ display:inline-flex; border-radius: 14px; }
       .brandText { min-width: 0; }
       .header h1 { margin: 0 0 8px; font-size: 1.4rem; }
       .header a { color: rgba(255,255,255,.92); }
@@ -352,6 +353,8 @@ export function renderHomePage({
       .topNavWrap { position: sticky; top: 0; z-index: 40; margin-bottom: 12px; }
       .topNav { display:flex; gap:10px; overflow-x:auto; padding: 10px 12px; border:1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--surface) 90%, transparent); box-shadow: var(--shadow); backdrop-filter: blur(12px); -webkit-overflow-scrolling: touch; }
       .topNav::-webkit-scrollbar { display: none; }
+      .topNavBrand{ display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius: 999px; border:1px solid var(--border); background: var(--surface2); flex: 0 0 auto; }
+      .topNavBrand img{ width:24px; height:24px; object-fit: cover; border-radius: 999px; }
       .topNavLink { white-space: nowrap; display:inline-flex; align-items:center; justify-content:center; padding: 10px 14px; border-radius: 999px; border:1px solid var(--border); background: var(--surface2); color: var(--text); font-weight: 600; }
       .topNavLink:hover { text-decoration:none; border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
       .skipLink{
@@ -590,7 +593,9 @@ export function renderHomePage({
       <a class="skipLink" href="#main-content">Bỏ qua đến nội dung chính</a>
       <header class="header" role="banner">
         <div class="headerTop">
-          <img class="brandLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" width="72" height="72" fetchpriority="high" loading="eager" decoding="async" />
+          <a class="brandHomeLink" href="/" aria-label="Về trang chủ và tải lại dữ liệu mới">
+            <img class="brandLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" width="72" height="72" fetchpriority="high" loading="eager" decoding="async" />
+          </a>
           <div class="brandText">
             <h1 id="headerTitle">Tin thị trường chứng khoán Việt Nam</h1>
             <p> Cập nhật ngày: ${escapeHtml(dateLabel)} </p>
@@ -601,6 +606,9 @@ export function renderHomePage({
       </header>
       <div class="topNavWrap">
         <nav class="topNav" aria-label="Điều hướng nhanh">
+          <a class="topNavBrand" href="/" aria-label="Về trang chủ và làm mới trang">
+            <img src="${LOGO_URL}" alt="Logo trang chủ" width="24" height="24" loading="eager" decoding="async" />
+          </a>
           <a class="topNavLink" href="#du-lieu">Dữ liệu</a>
           <a class="topNavLink" href="#tin-van">Tin vắn</a>
           <a class="topNavLink" href="#du-bao">Dự báo</a>
