@@ -120,7 +120,7 @@ export function renderHomePage({
     .slice(0, 6);
 
   const internationalVnBriefItems = mediaItems
-    .filter((item) => isInternationalSource(item) && isVietnamFinanceTopic(item))
+    .filter((item) => isInternationalFinanceBrief(item))
     .slice(0, 6);
 
   const visualMediaItems = mediaItems
@@ -445,7 +445,7 @@ export function renderHomePage({
       .spanAll{ grid-column: 1 / -1; }
       .card { background: var(--surface2); border-radius: 12px; padding: 12px; border: 1px solid var(--border); }
       .cardPinned { border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); background: color-mix(in srgb, var(--warning) 8%, var(--surface2)); }
-      .cardThumb{ width:100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 12px; margin: 10px 0 10px; border: 1px solid var(--border); background:#d0d5dd; }
+      .cardThumb{ width:100%; aspect-ratio: 16/9; max-height: 220px; object-fit: cover; border-radius: 12px; margin: 10px 0 10px; border: 1px solid var(--border); background:#d0d5dd; }
       .sentimentBadge{ display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; font-size:.8rem; font-weight:700; margin-bottom:6px; }
       .sentimentBadge.pos{ color:#066649; background: color-mix(in srgb, #12b76a 18%, transparent); border:1px solid color-mix(in srgb, #12b76a 45%, transparent); }
       .sentimentBadge.neu{ color:#475467; background: color-mix(in srgb, #98a2b3 20%, transparent); border:1px solid color-mix(in srgb, #98a2b3 45%, transparent); }
@@ -490,7 +490,7 @@ export function renderHomePage({
       /* Daily media */
       .mediaGrid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:12px; }
       .mediaCard{ background: var(--surface2); border:1px solid var(--border); border-radius: 14px; overflow:hidden; }
-      .mediaThumb{ display:block; width:100%; aspect-ratio: 16/9; object-fit: cover; background:#d0d5dd; }
+      .mediaThumb{ display:block; width:100%; aspect-ratio: 16/9; max-height: 200px; object-fit: cover; background:#d0d5dd; }
       .mediaThumbFallback{ display:flex; align-items:center; justify-content:center; font-weight:700; color: var(--muted); }
       .mediaBody{ padding:12px; }
       .mediaBody h3{ margin: 0 0 8px; font-size: 1rem; line-height: 1.4; }
@@ -546,6 +546,8 @@ export function renderHomePage({
         .historyTime{ grid-area: time; }
         .historyCount{ grid-area: count; font-size:.78rem; }
         .historyDelta{ grid-area: delta; justify-self: start; }
+        .cardThumb{ max-height: 160px; }
+        .mediaThumb{ max-height: 145px; }
         .filter { align-items: stretch; }
         .filter label { width: 100%; }
         .filter select, .filter button { width: 100%; }
@@ -952,11 +954,10 @@ function isInternationalSource(item: MediaItemRecord): boolean {
   return source.includes("reuters") || source.includes("cnbc") || source.includes("bloomberg") || source.includes("wsj");
 }
 
-function isVietnamFinanceTopic(item: MediaItemRecord): boolean {
+function isInternationalFinanceBrief(item: MediaItemRecord): boolean {
+  if (!isInternationalSource(item)) return false;
   const text = `${item.title} ${item.summaryVi}`.toLowerCase();
-  const hasVietnam = /(viet ?nam|vietnam|vn-index|vnindex|hose|hnx|upcom|ho chi minh|hanoi)/i.test(text);
-  const hasFinance = /(stock|market|equity|bond|bank|finance|financial|securit|chứng khoán|tài chính|ngân hàng|thị trường)/i.test(text);
-  return hasVietnam && hasFinance;
+  return /(stock|market|equity|bond|bank|finance|financial|securit|chứng khoán|tài chính|ngân hàng|thị trường)/i.test(text);
 }
 
 function isDomesticFinanceBrief(item: MediaItemRecord): boolean {
@@ -996,7 +997,8 @@ export function renderArticleDetailPage(params: {
     .wrap{max-width:900px;margin:0 auto;padding:16px}
     .card{background:#fff;border:1px solid #eaecf0;border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(15,23,42,.06)}
     .meta{color:#475467;font-size:.9rem}
-    .thumb{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;border:1px solid #eaecf0;background:#d0d5dd;margin:10px 0}
+    .thumb{width:100%;aspect-ratio:16/9;max-height:300px;object-fit:cover;border-radius:12px;border:1px solid #eaecf0;background:#d0d5dd;margin:10px 0}
+    @media (max-width:640px){ .thumb{max-height:210px} }
     .sentimentBadge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;font-size:.8rem;font-weight:700;margin:8px 0}
     .sentimentBadge.pos{color:#066649;background:rgba(18,183,106,.16);border:1px solid rgba(18,183,106,.4)}
     .sentimentBadge.neu{color:#475467;background:rgba(152,162,179,.2);border:1px solid rgba(152,162,179,.45)}
