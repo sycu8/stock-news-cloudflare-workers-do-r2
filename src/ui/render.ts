@@ -156,7 +156,7 @@ export function renderHomePage({
     .map(
       (item) => {
         const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
-        return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a> ${renderSentimentBadge(briefSentiment.label)}</li>`;
+        return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a><span class="briefTypeBadge domestic">Trong nước</span> ${renderSentimentBadge(briefSentiment.label)}</li>`;
       }
     )
     .join("");
@@ -164,7 +164,7 @@ export function renderHomePage({
   const internationalBriefBullets = internationalVnBriefItems
     .map((item) => {
       const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
-      return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a> ${renderSentimentBadge(briefSentiment.label)}</li>`;
+      return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a><span class="briefTypeBadge international">Quốc tế</span> ${renderSentimentBadge(briefSentiment.label)}</li>`;
     })
     .join("");
 
@@ -495,6 +495,16 @@ export function renderHomePage({
       .mediaBody{ padding:12px; }
       .mediaBody h3{ margin: 0 0 8px; font-size: 1rem; line-height: 1.4; }
       .briefList{ margin: 0; padding-left: 18px; display:grid; gap:8px; }
+      .briefTypeBadge{
+        display:inline-flex; align-items:center; margin-left:8px; padding:2px 8px;
+        border-radius:999px; border:1px solid var(--border); font-size:.74rem; font-weight:700;
+      }
+      .briefTypeBadge.domestic{
+        color:#066649; border-color: color-mix(in srgb, var(--pos) 50%, var(--border)); background: color-mix(in srgb, var(--pos) 10%, transparent);
+      }
+      .briefTypeBadge.international{
+        color:#155eef; border-color: color-mix(in srgb, var(--primary2) 50%, var(--border)); background: color-mix(in srgb, var(--primary2) 10%, transparent);
+      }
       .marketBoard { margin-top: 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface2); padding: 14px; }
       .marketGrid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
       .marketBlock { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--surface) 88%, transparent); }
