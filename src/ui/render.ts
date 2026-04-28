@@ -365,7 +365,15 @@ export function renderHomePage({
       .historyContentWrap { margin-top: 10px; display: grid; gap: 10px; }
       .historyTextBlock { border-top: 1px dashed color-mix(in srgb, var(--border) 72%, transparent); padding-top: 8px; }
       .historyTextTitle { margin: 0 0 4px; font-size: .92rem; }
-      .historyTextPreview { margin: 0; color: var(--muted); line-height: 1.55; }
+      .historyTextPreview {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
       .historyTextBody { display: none; }
       .historyPanel.expanded .historyTextBody { display: block; }
       .historyPanel.expanded .historyTextPreview { display: none; }
@@ -764,7 +772,7 @@ function normalizeText(input: string): string {
 }
 
 function renderHistoryTextBlock(title: string, text: string): string {
-  const preview = `${trimToLength(text, 190)}${normalizeText(text).length > 190 ? "..." : ""}`;
+  const preview = text.replace(/\s+/g, " ").trim();
   return `<div class="historyTextBlock">
     <p class="historyTextTitle"><strong>${escapeHtml(title)}:</strong></p>
     <p class="historyTextPreview">${escapeHtml(preview)}</p>
@@ -790,12 +798,6 @@ function renderReadableText(input: string): string {
     return `<p>${escapeHtml(compact)}</p>`;
   }
   return sentenceParts.map((part) => `<p>${escapeHtml(part)}</p>`).join("");
-}
-
-function trimToLength(input: string, maxLength: number): string {
-  const compact = input.replace(/\s+/g, " ").trim();
-  if (compact.length <= maxLength) return compact;
-  return compact.slice(0, Math.max(0, maxLength - 1)).trimEnd();
 }
 
 export function renderArticleDetailPage(params: {
