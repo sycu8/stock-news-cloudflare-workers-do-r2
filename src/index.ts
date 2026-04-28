@@ -203,6 +203,35 @@ app.get("/assets/*", async (c) => {
   return new Response(obj.body, { headers });
 });
 
+app.get("/img", async (c) => {
+  const raw = clampText(c.req.query("u"), 1800);
+  if (!raw) return c.text("Missing image URL", 400);
+  try {
+    const target = new URL(raw);
+    if (!/^https?:$/.test(target.protocol)) return c.text("Invalid URL", 400);
+    const resp = await fetch(target.toString(), {
+      headers: {
+        "User-Agent": "vn-market-daily-worker/1.0 (+Cloudflare Worker)",
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+      }
+    });
+    if (!resp.ok) return c.redirect(LOGO_ASSET_KEY.startsWith("brand/") ? `/assets/${LOGO_ASSET_KEY}` : LOGO_ASSET_KEY, 302);
+    const contentType = resp.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().startsWith("image/")) {
+      return c.redirect(LOGO_ASSET_KEY.startsWith("brand/") ? `/assets/${LOGO_ASSET_KEY}` : LOGO_ASSET_KEY, 302);
+    }
+    return new Response(resp.body, {
+      status: 200,
+      headers: {
+        "content-type": contentType,
+        "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800"
+      }
+    });
+  } catch {
+    return c.redirect(LOGO_ASSET_KEY.startsWith("brand/") ? `/assets/${LOGO_ASSET_KEY}` : LOGO_ASSET_KEY, 302);
+  }
+});
+
 app.get("/article", async (c) => {
   const url = clampText(c.req.query("u"), 1800);
   if (!url) return c.text("Missing article URL", 400);

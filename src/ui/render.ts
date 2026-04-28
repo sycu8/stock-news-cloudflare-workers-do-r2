@@ -494,6 +494,17 @@ export function renderHomePage({
       .mediaThumbFallback{ display:flex; align-items:center; justify-content:center; font-weight:700; color: var(--muted); }
       .mediaBody{ padding:12px; }
       .mediaBody h3{ margin: 0 0 8px; font-size: 1rem; line-height: 1.4; }
+      .briefTabs{ display:flex; gap:8px; margin: 0 0 10px; flex-wrap: wrap; }
+      .briefTabBtn{
+        border:1px solid var(--border); border-radius: 999px; padding:8px 12px; background: var(--surface2);
+        color: var(--text); font: inherit; cursor:pointer; font-weight:700;
+      }
+      .briefTabBtn.active{
+        border-color: color-mix(in srgb, var(--primary2) 60%, var(--border));
+        background: color-mix(in srgb, var(--primary2) 12%, transparent);
+      }
+      .briefTabPanel{ display:none; }
+      .briefTabPanel.active{ display:block; }
       .briefList{ margin: 0; padding-left: 18px; display:grid; gap:8px; }
       .briefTypeBadge{
         display:inline-flex; align-items:center; margin-left:8px; padding:2px 8px;
@@ -673,12 +684,18 @@ export function renderHomePage({
         <h2>Bản tin vắn & media trong ngày</h2>
         <p class="disclaimer">Tổng hợp trong cùng ngày cập nhật từ YouTube/public feed, báo tài chính trong nước và các nguồn quốc tế như Reuters, CNBC. Có thể xem lại bằng bộ lọc ngày ở phía dưới.</p>
         <div class="panel" style="margin-bottom:12px;">
-          <h3 style="margin-top:0;">Tin trong nước (tài chính & chứng khoán)</h3>
-          <ul class="briefList">${domesticBriefBullets || "<li>Chưa có bản tin trong nước cho ngày này.</li>"}</ul>
-        </div>
-        <div class="panel" style="margin-bottom:12px;">
-          <h3 style="margin-top:0;">Tin quốc tế về tình hình Việt Nam (tài chính & chứng khoán)</h3>
-          <ul class="briefList">${internationalBriefBullets || "<li>Chưa có bản tin quốc tế liên quan Việt Nam cho ngày này.</li>"}</ul>
+          <div class="briefTabs" role="tablist" aria-label="Bộ lọc tin vắn">
+            <button class="briefTabBtn active" id="brief-tab-domestic" type="button" role="tab" aria-selected="true" aria-controls="brief-panel-domestic">Trong nước</button>
+            <button class="briefTabBtn" id="brief-tab-international" type="button" role="tab" aria-selected="false" aria-controls="brief-panel-international">Nước ngoài</button>
+          </div>
+          <div id="brief-panel-domestic" class="briefTabPanel active" role="tabpanel" aria-labelledby="brief-tab-domestic">
+            <h3 style="margin-top:0;">Tin trong nước (tài chính & chứng khoán)</h3>
+            <ul class="briefList">${domesticBriefBullets || "<li>Chưa có bản tin trong nước cho ngày này.</li>"}</ul>
+          </div>
+          <div id="brief-panel-international" class="briefTabPanel" role="tabpanel" aria-labelledby="brief-tab-international">
+            <h3 style="margin-top:0;">Tin quốc tế về tình hình Việt Nam (tài chính & chứng khoán)</h3>
+            <ul class="briefList">${internationalBriefBullets || "<li>Chưa có bản tin quốc tế liên quan Việt Nam cho ngày này.</li>"}</ul>
+          </div>
         </div>
         <div class="mediaGrid">
           ${mediaCards || "<p>Chưa có media/hình ảnh phù hợp cho ngày này.</p>"}
@@ -740,6 +757,22 @@ export function renderHomePage({
           tabPanels.forEach((p) => p.classList.remove("active"));
           btn.classList.add("active");
           if (id) document.getElementById(id)?.classList.add("active");
+        });
+      });
+      const briefTabButtons = Array.from(document.querySelectorAll(".briefTabBtn"));
+      const briefPanels = Array.from(document.querySelectorAll(".briefTabPanel"));
+      function activateBriefTab(id){
+        briefTabButtons.forEach((btn) => {
+          const active = btn.getAttribute("aria-controls") === id;
+          btn.classList.toggle("active", active);
+          btn.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        briefPanels.forEach((panel) => panel.classList.toggle("active", panel.id === id));
+      }
+      briefTabButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("aria-controls");
+          if (id) activateBriefTab(id);
         });
       });
       const expandButtons = Array.from(document.querySelectorAll(".historyExpandBtn"));
@@ -897,13 +930,21 @@ function renderResponsiveImage(
 ): string {
   const srcset = buildCloudflareSrcset(src);
   const srcsetAttr = srcset ? ` srcset="${escapeAttribute(srcset)}"` : "";
-  return `<img class="${className}" src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}" width="${opts.width}" height="${opts.height}" loading="${opts.loading}" fetchpriority="${opts.fetchpriority}" decoding="async"${srcsetAttr} sizes="${escapeAttribute(opts.sizes)}" />`;
+  const source = proxiedImageUrl(src);
+  const fallback = escapeAttribute(proxiedImageUrl(LOGO_URL));
+  return `<img class="${className}" src="${escapeAttribute(source)}" alt="${escapeAttribute(alt)}" width="${opts.width}" height="${opts.height}" loading="${opts.loading}" fetchpriority="${opts.fetchpriority}" decoding="async"${srcsetAttr} sizes="${escapeAttribute(opts.sizes)}" onerror="this.onerror=null;this.src='${fallback}';" />`;
 }
 
 function buildCloudflareSrcset(src: string): string {
-  if (!/^https?:\/\//i.test(src) && !src.startsWith("/")) return "";
+  if (/^https?:\/\//i.test(src)) return "";
+  if (!src.startsWith("/")) return "";
   const widths = [320, 640, 960, 1200];
   return widths.map((w) => `/cdn-cgi/image/format=auto,quality=75,width=${w}/${src} ${w}w`).join(", ");
+}
+
+function proxiedImageUrl(src: string): string {
+  if (!/^https?:\/\//i.test(src)) return src;
+  return `/img?u=${encodeURIComponent(src)}`;
 }
 
 function isInternationalSource(item: MediaItemRecord): boolean {
