@@ -115,8 +115,12 @@ export function renderHomePage({
     )
     .join("");
 
-  const briefItems = mediaItems
-    .filter((item) => item.sourceId.startsWith("vietstock-brief-") || item.sourceId.startsWith("derived-brief-"))
+  const domesticBriefItems = mediaItems
+    .filter((item) => isDomesticFinanceBrief(item))
+    .slice(0, 6);
+
+  const internationalVnBriefItems = mediaItems
+    .filter((item) => isInternationalSource(item) && isVietnamFinanceTopic(item))
     .slice(0, 6);
 
   const visualMediaItems = mediaItems
@@ -148,13 +152,20 @@ export function renderHomePage({
     )
     .join("");
 
-  const briefBullets = briefItems
+  const domesticBriefBullets = domesticBriefItems
     .map(
       (item) => {
         const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
         return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a> ${renderSentimentBadge(briefSentiment.label)}</li>`;
       }
     )
+    .join("");
+
+  const internationalBriefBullets = internationalVnBriefItems
+    .map((item) => {
+      const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
+      return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a> ${renderSentimentBadge(briefSentiment.label)}</li>`;
+    })
     .join("");
 
   const metaDescription = escapeAttribute(
@@ -652,8 +663,12 @@ export function renderHomePage({
         <h2>Bản tin vắn & media trong ngày</h2>
         <p class="disclaimer">Tổng hợp trong cùng ngày cập nhật từ YouTube/public feed, báo tài chính trong nước và các nguồn quốc tế như Reuters, CNBC. Có thể xem lại bằng bộ lọc ngày ở phía dưới.</p>
         <div class="panel" style="margin-bottom:12px;">
-          <h3 style="margin-top:0;">Bản tin vắn tài chính trong ngày</h3>
-          <ul class="briefList">${briefBullets || "<li>Chưa có bản tin vắn cho ngày này.</li>"}</ul>
+          <h3 style="margin-top:0;">Tin trong nước (tài chính & chứng khoán)</h3>
+          <ul class="briefList">${domesticBriefBullets || "<li>Chưa có bản tin trong nước cho ngày này.</li>"}</ul>
+        </div>
+        <div class="panel" style="margin-bottom:12px;">
+          <h3 style="margin-top:0;">Tin quốc tế về tình hình Việt Nam (tài chính & chứng khoán)</h3>
+          <ul class="briefList">${internationalBriefBullets || "<li>Chưa có bản tin quốc tế liên quan Việt Nam cho ngày này.</li>"}</ul>
         </div>
         <div class="mediaGrid">
           ${mediaCards || "<p>Chưa có media/hình ảnh phù hợp cho ngày này.</p>"}
@@ -879,6 +894,32 @@ function buildCloudflareSrcset(src: string): string {
   if (!/^https?:\/\//i.test(src) && !src.startsWith("/")) return "";
   const widths = [320, 640, 960, 1200];
   return widths.map((w) => `/cdn-cgi/image/format=auto,quality=75,width=${w}/${src} ${w}w`).join(", ");
+}
+
+function isInternationalSource(item: MediaItemRecord): boolean {
+  const source = `${item.sourceId} ${item.sourceName}`.toLowerCase();
+  return source.includes("reuters") || source.includes("cnbc") || source.includes("bloomberg") || source.includes("wsj");
+}
+
+function isVietnamFinanceTopic(item: MediaItemRecord): boolean {
+  const text = `${item.title} ${item.summaryVi}`.toLowerCase();
+  const hasVietnam = /(viet ?nam|vietnam|vn-index|vnindex|hose|hnx|upcom|ho chi minh|hanoi)/i.test(text);
+  const hasFinance = /(stock|market|equity|bond|bank|finance|financial|securit|chứng khoán|tài chính|ngân hàng|thị trường)/i.test(text);
+  return hasVietnam && hasFinance;
+}
+
+function isDomesticFinanceBrief(item: MediaItemRecord): boolean {
+  const source = `${item.sourceId} ${item.sourceName}`.toLowerCase();
+  const isDomesticSource =
+    source.includes("vietstock") ||
+    source.includes("cafef") ||
+    source.includes("vnexpress") ||
+    source.includes("stockscafe") ||
+    source.includes("derived-brief-") ||
+    /\.vn(\/|$)/i.test(item.url);
+  if (!isDomesticSource) return false;
+  const text = `${item.title} ${item.summaryVi}`.toLowerCase();
+  return /(chứng khoán|tài chính|ngân hàng|thị trường|vn-index|vnindex|hose|hnx|upcom|stock|finance|market)/i.test(text);
 }
 
 export function renderArticleDetailPage(params: {
