@@ -1,0 +1,34 @@
+name = "vn-market-daily-worker"
+main = "src/index.ts"
+compatibility_date = "2026-04-28"
+account_id = "4c15704ef706b9c8954cd6f9feb678d8"
+
+[observability.logs]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vn_market_news"
+database_id = "85a1925f-0f6c-40ab-9a98-3dd015e41ae2"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "8190fc51469149a28a65a14930c19c18"
+preview_id = "5ba8f2b4749947acb805eb7dbdb463d3"
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "vn-market-assets"
+preview_bucket_name = "vn-market-assets-preview"
+
+[vars]
+# Set this to an OpenAI model you have access to (e.g. "gpt-5.5").
+OPENAI_MODEL = "gpt-5.5"
+TZ = "Asia/Ho_Chi_Minh"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[ai]
+binding = "AI"

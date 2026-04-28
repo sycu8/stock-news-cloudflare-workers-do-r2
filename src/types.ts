@@ -1,0 +1,121 @@
+export interface Env {
+  DB: D1Database;
+  CACHE: KVNamespace;
+  ASSETS?: R2Bucket;
+  AI?: Ai;
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+  AI_GATEWAY_ID?: string;
+  WORKERS_AI_MODEL_SUMMARY?: string;
+  ADMIN_REFRESH_TOKEN: string;
+  TZ?: string;
+}
+
+export type NewsSourceType = "rss" | "html_list";
+
+export interface NewsSourceConfig {
+  id: string;
+  name: string;
+  type: NewsSourceType;
+  url?: string;
+  feedUrl?: string;
+  baseUrl?: string;
+  listUrl?: string;
+  enabled: boolean;
+  allowCrawl?: boolean;
+  respectRobots?: boolean;
+  extractorKey?: string;
+  notes?: string;
+  isDefault?: boolean;
+}
+
+export interface NormalizedArticle {
+  sourceId: string;
+  sourceName: string;
+  title: string;
+  url: string;
+  publishedAt: string;
+  snippet: string;
+  contentLimited: boolean;
+}
+
+export interface StoredArticle extends NormalizedArticle {
+  id: number;
+  summaryVi: string | null;
+  imageUrl?: string | null;
+}
+
+export interface DailyReport {
+  reportDate: string;
+  overviewVi: string;
+  outlookVi: string;
+  assumptionsVi: string;
+  articleCount: number;
+}
+
+export interface ReportHistoryEntry {
+  updatedAt: string;
+  overviewVi: string;
+  outlookVi: string;
+  assumptionsVi: string;
+  articleCount: number;
+  sentiment?: {
+    positive: number;
+    neutral: number;
+    negative: number;
+    score: number;
+  };
+}
+
+export interface MediaItemRecord {
+  id?: number;
+  kind: "youtube" | "news_image";
+  sourceId: string;
+  sourceName: string;
+  title: string;
+  url: string;
+  publishedAt: string;
+  reportDate: string;
+  summaryVi: string;
+  imageUrl: string | null;
+}
+
+export interface CafeFMarketSnapshot {
+  fetchedAt: string;
+  marketDateLabel: string;
+  overviewItems: string[];
+  quickLinks: Array<{ label: string; url: string }>;
+  toolLinks: Array<{ label: string; url: string }>;
+  sections: string[];
+  notes: string[];
+  sourceUrl: string;
+}
+
+export interface NewsSourceRecord {
+  id: string;
+  name: string;
+  type: NewsSourceType;
+  baseUrl: string | null;
+  feedUrl: string | null;
+  listUrl: string | null;
+  enabled: boolean;
+  allowCrawl: boolean;
+  respectRobots: boolean;
+  extractorKey: string | null;
+  notes: string | null;
+  isDefault: boolean;
+  lastRunStatus?: string | null;
+  lastRunAt?: string | null;
+  lastRunMessage?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CrawlRunRecord {
+  id: number;
+  sourceId: string;
+  status: "success" | "error";
+  message: string;
+  fetchedCount: number;
+  createdAt: string;
+}

@@ -1,0 +1,11 @@
+---
+description: Automatically deploy after finishing development work
+alwaysApply: true
+---
+
+# Auto Deploy
+
+- After completing code changes and local verification, deploy the latest version unless the user explicitly says not to deploy.
+- For this project, prefer running `npx wrangler deploy` as the final implementation step.
+- If deploy fails, report the failure clearly and include the blocking error.
+- If the task is read-only, planning-only, or the user only asked a question, do not deploy.
