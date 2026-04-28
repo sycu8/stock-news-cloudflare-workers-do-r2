@@ -1,0 +1,38 @@
+name: Performance and Accessibility CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  perf-a11y:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run worker for CI checks
+        run: |
+          npm run dev -- --local --port 8787 > worker.log 2>&1 &
+          sleep 12
+      - name: Route smoke tests (lang/skip/main + RSS + pagination)
+        run: |
+          curl -fsS "http://127.0.0.1:8787/" | grep -q 'lang="vi"'
+          curl -fsS "http://127.0.0.1:8787/" | grep -q 'href="#main-content"'
+          curl -fsS "http://127.0.0.1:8787/" | grep -q 'id="main-content"'
+          curl -fsS "http://127.0.0.1:8787/rss/today" > /dev/null
+          curl -fsS "http://127.0.0.1:8787/?page=2" > /dev/null
+      - name: Run Lighthouse CI
+        run: npm run ci:lighthouse
+      - name: Run Pa11y CI
+        run: npm run ci:a11y
+      - name: Synthetic uptime checks
+        run: |
+          for path in "/" "/article?u=https%3A%2F%2Fexample.com" "/search?q=vn-index" "/rss/today" "/?page=3" "/health"; do
+            curl -fsS "http://127.0.0.1:8787$path" > /dev/null
+          done

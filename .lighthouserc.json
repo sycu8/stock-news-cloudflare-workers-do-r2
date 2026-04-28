@@ -1,0 +1,20 @@
+{
+  "ci": {
+    "collect": {
+      "numberOfRuns": 2,
+      "url": [
+        "http://127.0.0.1:8787/",
+        "http://127.0.0.1:8787/article?u=https%3A%2F%2Fexample.com",
+        "http://127.0.0.1:8787/search?q=vn-index"
+      ]
+    },
+    "assert": {
+      "assertions": {
+        "categories:accessibility": ["error", { "minScore": 0.95 }],
+        "categories:performance": ["error", { "minScore": 0.8 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }]
+      }
+    }
+  }
+}

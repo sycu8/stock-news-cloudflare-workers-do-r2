@@ -33,15 +33,15 @@ app.use("*", async (c, next) => {
 
 app.get("/", async (c) => {
   try {
-    const source = c.req.query("source")?.trim();
+    const source = clampText(c.req.query("source"), 80);
     const sentiment = (c.req.query("sentiment") ?? "").trim().toLowerCase();
     const date = (c.req.query("date") ?? "").trim();
-    const q = (c.req.query("q") ?? "").trim();
-    const page = Number.parseInt((c.req.query("page") ?? "1").trim(), 10);
+    const q = clampText(c.req.query("q"), 120);
+    const page = clampInt(c.req.query("page"), 1, 1, 200);
     const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
     const feed = await getFeedByDate(c.env, reportDate, {
       sourceFilter: source || undefined,
-      page: Number.isFinite(page) && page > 0 ? page : 1,
+      page,
       pageSize: 50,
       q: q || undefined
     });
@@ -126,17 +126,29 @@ app.get("/", async (c) => {
         canonicalUrl: canonicalUrl.toString(),
         reportDate,
         q,
-        page: Number.isFinite(page) && page > 0 ? page : 1,
+        page,
         total: pinCandidateFeed.total,
         pageSize: 12,
         updatedAt: feed.cachedAt,
-        reportHistory: feed.reportHistory
+        reportHistory: feed.reportHistory,
+        cacheStatus: feed.cacheHit ? "hit" : "miss"
       })
+      ,
+      200,
+      {
+        "cache-control": htmlCacheControl(),
+        "content-language": "vi"
+      }
     );
   } catch (error) {
     console.error("GET / failed:", error);
     return c.text("Internal Server Error", 500);
   }
+});
+
+app.get("/search", (c) => {
+  const qp = new URL(c.req.url).searchParams;
+  return c.redirect(`/?${qp.toString()}`, 302);
 });
 
 app.get("/go", async (c) => {
@@ -180,7 +192,8 @@ app.get("/assets/*", async (c) => {
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
   headers.set("etag", obj.httpEtag);
-  headers.set("cache-control", key.startsWith("brand/") ? "public, max-age=86400" : "public, max-age=3600");
+  const immutable = /\.(?:avif|webp|png|jpg|jpeg|gif|svg|woff2|css|js)$/i.test(key);
+  headers.set("cache-control", immutable ? "public, max-age=31536000, immutable" : "public, max-age=86400");
   if (!headers.get("content-type")) {
     if (key.endsWith(".png")) headers.set("content-type", "image/png");
     else if (key.endsWith(".jpg") || key.endsWith(".jpeg")) headers.set("content-type", "image/jpeg");
@@ -191,7 +204,7 @@ app.get("/assets/*", async (c) => {
 });
 
 app.get("/article", async (c) => {
-  const url = (c.req.query("u") ?? "").trim();
+  const url = clampText(c.req.query("u"), 1800);
   if (!url) return c.text("Missing article URL", 400);
   try {
     const parsed = new URL(url);
@@ -211,8 +224,14 @@ app.get("/article", async (c) => {
         snippet,
         imageUrl: article?.imageUrl ?? extracted?.imageUrl ?? null,
         sourceUrl: `/go?d=${encodeURIComponent(getTodayDateKey())}&u=${encodeURIComponent(parsed.toString())}`,
-        sentimentLabel
-      })
+        sentimentLabel,
+        cacheStatus: "miss"
+      }),
+      200,
+      {
+        "cache-control": htmlCacheControl(),
+        "content-language": "vi"
+      }
     );
   } catch {
     return c.text("Invalid URL", 400);
@@ -221,10 +240,12 @@ app.get("/article", async (c) => {
 
 app.get("/api/news/today", async (c) => {
   try {
-    const source = c.req.query("source")?.trim();
+    const source = clampText(c.req.query("source"), 80);
     const date = (c.req.query("date") ?? "").trim();
+    const page = clampInt(c.req.query("page"), 1, 1, 200);
+    const pageSize = clampInt(c.req.query("pageSize"), 50, 1, 200);
     const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
-    const feed = await getFeedByDate(c.env, reportDate, { sourceFilter: source || undefined, page: 1, pageSize: 200 });
+    const feed = await getFeedByDate(c.env, reportDate, { sourceFilter: source || undefined, page, pageSize });
     return c.json({
       date: feed.reportDate,
       sourceFilter: source || null,
@@ -234,6 +255,8 @@ app.get("/api/news/today", async (c) => {
       cacheHit: feed.cacheHit,
       cachedAt: feed.cachedAt,
       articles: feed.articles
+    }, 200, {
+      "cache-control": "public, s-maxage=60, stale-while-revalidate=300, stale-if-error=3600"
     });
   } catch (error) {
     console.error("GET /api/news/today failed:", error);
@@ -243,7 +266,7 @@ app.get("/api/news/today", async (c) => {
 
 app.get("/rss/today", async (c) => {
   try {
-    const source = c.req.query("source")?.trim();
+    const source = clampText(c.req.query("source"), 80);
     const feed = await getTodayFeed(c.env, source || undefined);
     const url = new URL(c.req.url);
     const xml = generateTodayRssXml({
@@ -254,13 +277,44 @@ app.get("/rss/today", async (c) => {
       sourceFilter: source || undefined
     });
     return c.text(xml, 200, {
-      "Content-Type": "application/rss+xml; charset=utf-8"
+      "Content-Type": "application/rss+xml; charset=utf-8",
+      "cache-control": "public, s-maxage=120, stale-while-revalidate=300, stale-if-error=3600"
     });
   } catch (error) {
     console.error("GET /rss/today failed:", error);
     return c.text("RSS generation failed", 500);
   }
 });
+
+app.post("/api/rum", async (c) => {
+  try {
+    const payload = await c.req.json();
+    const routeTemplate = clampText(payload?.routeTemplate, 32) ?? "unknown";
+    const metric = clampText(payload?.metric, 16) ?? "unknown";
+    const value = Number(payload?.value ?? 0);
+    const deviceClass = clampText(payload?.deviceClass, 16) ?? "unknown";
+    const path = clampText(payload?.path, 200) ?? "";
+    const cacheStatus = clampText(payload?.cacheStatus, 16) ?? "unknown";
+    console.log("rum_metric", JSON.stringify({ routeTemplate, metric, value, deviceClass, path, cacheStatus, at: new Date().toISOString() }));
+    return c.json({ ok: true }, 202);
+  } catch {
+    return c.json({ error: "invalid rum payload" }, 400);
+  }
+});
+
+app.get("/health", (c) =>
+  c.json(
+    {
+      ok: true,
+      service: "vn-market-daily-worker",
+      at: new Date().toISOString()
+    },
+    200,
+    {
+      "cache-control": "no-store"
+    }
+  )
+);
 
 app.post("/admin/refresh", async (c) => {
   if (!isAdminAuthorized(c)) {
@@ -472,4 +526,21 @@ function hotScore(a: { title: string; snippet: string; summaryVi: string | null;
   // Slightly prioritize commentary sources.
   if (a.sourceName.toLowerCase().includes("research")) s += 1;
   return s;
+}
+
+function clampText(input: string | undefined, maxLen: number): string | undefined {
+  if (!input) return undefined;
+  const v = input.trim();
+  if (!v) return undefined;
+  return v.slice(0, maxLen);
+}
+
+function clampInt(input: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt((input ?? "").trim(), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function htmlCacheControl(): string {
+  return "public, s-maxage=120, stale-while-revalidate=300, stale-if-error=3600";
 }

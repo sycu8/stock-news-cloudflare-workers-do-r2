@@ -23,6 +23,7 @@ interface HomePageParams {
   total?: number;
   pageSize?: number;
   updatedAt?: string | null;
+  cacheStatus?: "hit" | "miss";
 }
 
 export function renderHomePage({
@@ -45,20 +46,27 @@ export function renderHomePage({
   page = 1,
   total = 0,
   pageSize = 12,
-  updatedAt = null
+  updatedAt = null,
+  cacheStatus = "miss"
 }: HomePageParams): string {
   const sourceOptions = availableSources
     .map((source) => `<option value="${escapeHtml(source)}" ${selectedSource === source ? "selected" : ""}>${escapeHtml(source)}</option>`)
     .join("");
   const pinnedCards = pinnedArticles
     .map(
-      (article) => `
+      (article, idx) => `
         <article class="card cardPinned">
           <div class="pinRow">
             <span class="pinBadge">Hot</span>
             <p class="meta">${escapeHtml(article.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(article.publishedAt))}</p>
           </div>
-          <img class="cardThumb" src="${escapeAttribute(article.imageUrl || LOGO_URL)}" alt="${escapeAttribute(article.title)}" loading="lazy" />
+          ${renderResponsiveImage(article.imageUrl || LOGO_URL, "cardThumb", article.title, {
+            width: 1200,
+            height: 675,
+            loading: idx === 0 ? "eager" : "lazy",
+            fetchpriority: idx === 0 ? "high" : "auto",
+            sizes: "(max-width: 768px) 100vw, 33vw"
+          })}
           <h3>${
             (article as StoredArticle & { detailUrl?: string }).detailUrl
               ? `<a href="${escapeAttribute((article as StoredArticle & { detailUrl?: string }).detailUrl ?? "#")}">${escapeHtml(article.title)}</a>`
@@ -79,10 +87,16 @@ export function renderHomePage({
 
   const cards = articles
     .map(
-      (article) => `
+      (article, idx) => `
         <article class="card">
           <p class="meta">${escapeHtml(article.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(article.publishedAt))}</p>
-          <img class="cardThumb" src="${escapeAttribute(article.imageUrl || LOGO_URL)}" alt="${escapeAttribute(article.title)}" loading="lazy" />
+          ${renderResponsiveImage(article.imageUrl || LOGO_URL, "cardThumb", article.title, {
+            width: 1200,
+            height: 675,
+            loading: idx === 0 && pinnedArticles.length === 0 ? "eager" : "lazy",
+            fetchpriority: idx === 0 && pinnedArticles.length === 0 ? "high" : "auto",
+            sizes: "(max-width: 768px) 100vw, 33vw"
+          })}
           <h3>${
             (article as StoredArticle & { detailUrl?: string }).detailUrl
               ? `<a href="${escapeAttribute((article as StoredArticle & { detailUrl?: string }).detailUrl ?? "#")}">${escapeHtml(article.title)}</a>`
@@ -115,7 +129,13 @@ export function renderHomePage({
         <article class="mediaCard">
           ${
             item.imageUrl
-              ? `<img class="mediaThumb" src="${escapeAttribute(item.imageUrl)}" alt="${escapeAttribute(item.title)}" loading="lazy" />`
+              ? renderResponsiveImage(item.imageUrl, "mediaThumb", item.title, {
+                  width: 1200,
+                  height: 675,
+                  loading: "lazy",
+                  fetchpriority: "auto",
+                  sizes: "(max-width: 768px) 100vw, 50vw"
+                })
               : `<div class="mediaThumb mediaThumbFallback">${item.kind === "youtube" ? "YouTube" : "Tin nhanh"}</div>`
           }
           <div class="mediaBody">
@@ -213,6 +233,7 @@ export function renderHomePage({
     .join("");
   const updatedLabel = updatedAt ? formatVietnamTimeDisplay(updatedAt) : null;
   const updatedFullLabel = updatedAt ? formatVietnamDateTimeDisplay(updatedAt) : null;
+  const resultsCount = (pinnedArticles?.length ?? 0) + articles.length;
   const autoRefreshCheckUrl = (() => {
     const qp = new URLSearchParams();
     if (reportDate) qp.set("date", reportDate);
@@ -322,6 +343,18 @@ export function renderHomePage({
       .topNav::-webkit-scrollbar { display: none; }
       .topNavLink { white-space: nowrap; display:inline-flex; align-items:center; justify-content:center; padding: 10px 14px; border-radius: 999px; border:1px solid var(--border); background: var(--surface2); color: var(--text); font-weight: 600; }
       .topNavLink:hover { text-decoration:none; border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
+      .skipLink{
+        position:absolute; left: 8px; top: -44px; z-index: 100;
+        background:#fff; color:#111; border:1px solid #cbd5e1; border-radius:8px; padding:8px 12px;
+      }
+      .skipLink:focus{ top: 8px; }
+      :focus-visible{ outline: 3px solid color-mix(in srgb, var(--primary2) 75%, #fff); outline-offset: 2px; }
+      #main-content, #tin-tuc, #du-lieu, #tin-van, #du-bao { scroll-margin-top: 76px; }
+      button, a, input, select { min-height: 24px; min-width: 24px; }
+      .srOnly{
+        position:absolute !important; width:1px; height:1px; padding:0; margin:-1px;
+        overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+      }
       .panel { background: var(--surface); border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); border: 1px solid var(--border); }
       .panel h2 { margin-top: 0; font-size: 1.1rem; }
       .historySmart{ display:grid; grid-template-columns: 280px 1fr; gap:10px; align-items:start; }
@@ -520,9 +553,10 @@ export function renderHomePage({
   </head>
   <body>
     <main class="container" id="top">
-      <section class="header">
+      <a class="skipLink" href="#main-content">Bỏ qua đến nội dung chính</a>
+      <header class="header" role="banner">
         <div class="headerTop">
-          <img class="brandLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" />
+          <img class="brandLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" width="72" height="72" fetchpriority="high" loading="eager" decoding="async" />
           <div class="brandText">
             <h1 id="headerTitle">Tin thị trường chứng khoán Việt Nam</h1>
             <p> Cập nhật ngày: ${escapeHtml(dateLabel)} </p>
@@ -530,7 +564,7 @@ export function renderHomePage({
             <a class="langHint" href="/rss/today">RSS hôm nay</a>
           </div>
         </div>
-      </section>
+      </header>
       <div class="topNavWrap">
         <nav class="topNav" aria-label="Điều hướng nhanh">
           <a class="topNavLink" href="#du-lieu">Dữ liệu</a>
@@ -539,20 +573,49 @@ export function renderHomePage({
           <a class="topNavLink" href="#tin-tuc">Tin tức</a>
         </nav>
       </div>
-      <section class="panel">
-        <h2 id="overviewTitle">Tổng quan thị trường trong ngày</h2>
-        <div id="overviewText" class="overviewReadable">${renderReadableText(report.overviewVi)}</div>
+      <main id="main-content" role="main">
+      <form class="filter panel" method="GET" action="/" aria-label="Lọc và tìm kiếm tin tức">
+        <h2 style="margin:0 0 10px;">Tìm kiếm và lọc tin</h2>
+        <label for="source" id="filterLabel">Lọc theo nguồn:</label>
+        <select id="source" name="source">
+          <option value="" id="allSourcesOption">Tất cả</option>
+          ${sourceOptions}
+        </select>
+        <label class="srOnly" for="sentimentFilter">Lọc theo cảm xúc</label>
+        <select id="sentimentFilter" name="sentiment" aria-label="Lọc theo sentiment">
+          <option value="" ${!selectedSentiment ? "selected" : ""}>Tất cả sentiment</option>
+          <option value="positive" ${selectedSentiment === "positive" ? "selected" : ""}>Tích cực</option>
+          <option value="neutral" ${selectedSentiment === "neutral" ? "selected" : ""}>Trung tính</option>
+          <option value="negative" ${selectedSentiment === "negative" ? "selected" : ""}>Tiêu cực</option>
+        </select>
+        <div class="dateRow">
+          <label class="srOnly" for="dateFilter">Chọn ngày</label>
+          <input id="dateFilter" type="date" name="date" value="${escapeAttribute(reportDate)}" aria-label="Chọn ngày" />
+          <label class="srOnly" for="keywordFilter">Tìm theo từ khóa</label>
+          <input id="keywordFilter" type="search" name="q" value="${escapeAttribute(q)}" placeholder="Tìm theo từ khóa…" aria-label="Tìm theo từ khóa" />
+        </div>
+        <input type="hidden" name="page" value="1" />
+        <button id="applyButton" type="submit">Áp dụng</button>
+      </form>
+      <p id="resultsStatus" class="meta" role="status" aria-live="polite">Đang hiển thị ${resultsCount} tin trên trang này.</p>
+      <div class="pager">
+        <a href="${escapeAttribute(prevHref)}" aria-label="Trang trước">← Trước</a>
+        <span class="muted">Trang ${page} / ${totalPages} • ${total || 0} tin</span>
+        <a href="${escapeAttribute(nextHref)}" aria-label="Trang sau">Sau →</a>
+      </div>
+      <section class="grid" id="tin-tuc" aria-labelledby="newsHeading">
         ${
-          reportHistory.length > 0
-            ? `<h3 style="margin:14px 0 8px;">Lịch sử cập nhật trong ngày</h3><div class="historySmart"><div class="historyTabs">${historyTabButtons}</div><div>${historyTabPanels}</div></div>`
-            : ""
+          pinnedCards
+            ? `<div class="spanAll"><h2 id="newsHeading" style="margin:6px 0 10px;">Tin nổi bật và mới nhất</h2></div>${pinnedCards}`
+            : `<div class="spanAll"><h2 id="newsHeading" style="margin:6px 0 10px;">Tin mới nhất</h2></div>`
         }
+        ${cards || "<p id=\"noArticles\">Chưa có bài viết nào cho ngày hôm nay.</p>"}
       </section>
-      <section class="panel warning" id="du-bao">
-        <h2>Kịch bản thị trường (heuristic)</h2>
-        ${chartsHtml || "<p class=\"muted\">Chưa đủ dữ liệu để hiển thị biểu đồ.</p>"}
-      </section>
-
+      <div class="pager">
+        <a href="${escapeAttribute(prevHref)}" aria-label="Trang trước">← Trước</a>
+        <span class="muted">Trang ${page} / ${totalPages}</span>
+        <a href="${escapeAttribute(nextHref)}" aria-label="Trang sau">Sau →</a>
+      </div>
       <section class="panel" id="du-lieu">
         <h2>Dữ liệu thị trường từ CafeF</h2>
         <p class="disclaimer">Tự động crawl từ trang dữ liệu thị trường của CafeF và hiển thị lại theo giao diện riêng của website. Nguồn gốc: <a href="${escapeAttribute(
@@ -603,46 +666,23 @@ export function renderHomePage({
         <div class="chips">${hotKeywordChips || "<span class=\"muted\">Chưa đủ dữ liệu để tổng hợp từ khóa.</span>"}</div>
       </section>
 
-      <form class="filter" method="GET" action="/">
-        <label for="source" id="filterLabel">Lọc theo nguồn:</label>
-        <select id="source" name="source">
-          <option value="" id="allSourcesOption">Tất cả</option>
-          ${sourceOptions}
-        </select>
-        <select name="sentiment" aria-label="Lọc theo sentiment">
-          <option value="" ${!selectedSentiment ? "selected" : ""}>Tất cả sentiment</option>
-          <option value="positive" ${selectedSentiment === "positive" ? "selected" : ""}>Tích cực</option>
-          <option value="neutral" ${selectedSentiment === "neutral" ? "selected" : ""}>Trung tính</option>
-          <option value="negative" ${selectedSentiment === "negative" ? "selected" : ""}>Tiêu cực</option>
-        </select>
-        <div class="dateRow">
-          <input type="date" name="date" value="${escapeAttribute(reportDate)}" aria-label="Chọn ngày" />
-          <input type="search" name="q" value="${escapeAttribute(q)}" placeholder="Tìm theo từ khóa…" aria-label="Tìm theo từ khóa" />
-        </div>
-        <input type="hidden" name="page" value="1" />
-        <button id="applyButton" type="submit">Áp dụng</button>
-      </form>
-      <div class="pager">
-        <a href="${escapeAttribute(prevHref)}" aria-label="Trang trước">← Trước</a>
-        <span class="muted">Trang ${page} / ${totalPages} • ${total || 0} tin</span>
-        <a href="${escapeAttribute(nextHref)}" aria-label="Trang sau">Sau →</a>
-      </div>
-      <section class="grid" id="tin-tuc">
+      <section class="panel">
+        <h2 id="overviewTitle">Tổng quan thị trường trong ngày</h2>
+        <div id="overviewText" class="overviewReadable">${renderReadableText(report.overviewVi)}</div>
         ${
-          pinnedCards
-            ? `<div class="spanAll"><h2 style="margin:6px 0 10px;">Tin nổi bật</h2></div>${pinnedCards}`
+          reportHistory.length > 0
+            ? `<h3 style="margin:14px 0 8px;">Lịch sử cập nhật trong ngày</h3><div class="historySmart"><div class="historyTabs">${historyTabButtons}</div><div>${historyTabPanels}</div></div>`
             : ""
         }
-        ${cards || "<p id=\"noArticles\">Chưa có bài viết nào cho ngày hôm nay.</p>"}
       </section>
-      <div class="pager">
-        <a href="${escapeAttribute(prevHref)}" aria-label="Trang trước">← Trước</a>
-        <span class="muted">Trang ${page} / ${totalPages}</span>
-        <a href="${escapeAttribute(nextHref)}" aria-label="Trang sau">Sau →</a>
-      </div>
-      <footer class="footer">
+      <section class="panel warning" id="du-bao">
+        <h2>Kịch bản thị trường (heuristic)</h2>
+        ${chartsHtml || "<p class=\"muted\">Chưa đủ dữ liệu để hiển thị biểu đồ.</p>"}
+      </section>
+      </main>
+      <footer class="footer" role="contentinfo">
         <div class="footerBrand">
-          <img class="footerLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" />
+          <img class="footerLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" width="52" height="52" loading="lazy" decoding="async" />
           <div>
             <strong>Stock News by Orange Cloud</strong>
             <p>Tổng hợp tin chứng khoán Việt Nam theo ngày, tối ưu cho desktop và mobile.</p>
@@ -692,6 +732,30 @@ export function renderHomePage({
       // Auto refresh every 5 minutes when fresh crawl is available.
       const currentCachedAt = ${JSON.stringify(updatedAt ?? "")};
       const autoRefreshUrl = ${JSON.stringify(autoRefreshCheckUrl)};
+      const rumPayloadBase = { routeTemplate: "home", deviceClass: window.innerWidth < 768 ? "mobile" : "desktop", path: location.pathname + location.search, cacheStatus: ${JSON.stringify(cacheStatus)} };
+      function sendRum(metric){
+        try{
+          navigator.sendBeacon("/api/rum", JSON.stringify({ ...rumPayloadBase, ...metric }));
+        } catch {}
+      }
+      if ("PerformanceObserver" in window) {
+        try {
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              if (entry.entryType === "largest-contentful-paint") sendRum({ metric: "LCP", value: entry.startTime });
+              if (entry.entryType === "layout-shift" && !(entry).hadRecentInput) sendRum({ metric: "CLS", value: (entry).value });
+            }
+          }).observe({ type: "largest-contentful-paint", buffered: true });
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) sendRum({ metric: "INP", value: (entry).duration ?? entry.startTime });
+          }).observe({ type: "event", buffered: true, durationThreshold: 40 });
+        } catch {}
+      }
+      const nav = performance.getEntriesByType("navigation")[0];
+      if (nav) {
+        sendRum({ metric: "TTFB", value: nav.responseStart });
+        sendRum({ metric: "FCP", value: performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? 0 });
+      }
       async function checkForFreshDataAndReload() {
         try {
           const resp = await fetch(autoRefreshUrl, {
@@ -800,6 +864,23 @@ function renderReadableText(input: string): string {
   return sentenceParts.map((part) => `<p>${escapeHtml(part)}</p>`).join("");
 }
 
+function renderResponsiveImage(
+  src: string,
+  className: string,
+  alt: string,
+  opts: { width: number; height: number; loading: "eager" | "lazy"; fetchpriority: "high" | "auto"; sizes: string }
+): string {
+  const srcset = buildCloudflareSrcset(src);
+  const srcsetAttr = srcset ? ` srcset="${escapeAttribute(srcset)}"` : "";
+  return `<img class="${className}" src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}" width="${opts.width}" height="${opts.height}" loading="${opts.loading}" fetchpriority="${opts.fetchpriority}" decoding="async"${srcsetAttr} sizes="${escapeAttribute(opts.sizes)}" />`;
+}
+
+function buildCloudflareSrcset(src: string): string {
+  if (!/^https?:\/\//i.test(src) && !src.startsWith("/")) return "";
+  const widths = [320, 640, 960, 1200];
+  return widths.map((w) => `/cdn-cgi/image/format=auto,quality=75,width=${w}/${src} ${w}w`).join(", ");
+}
+
 export function renderArticleDetailPage(params: {
   title: string;
   sourceName: string;
@@ -809,12 +890,16 @@ export function renderArticleDetailPage(params: {
   imageUrl?: string | null;
   sourceUrl: string;
   sentimentLabel: "positive" | "neutral" | "negative";
+  cacheStatus?: "hit" | "miss";
 }): string {
   const p = params;
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(p.title)}</title>
   <link rel="icon" type="image/png" href="${LOGO_URL}" />
   <style>
+    .skipLink{position:absolute;left:8px;top:-44px;background:#fff;color:#111;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px}
+    .skipLink:focus{top:8px}
+    :focus-visible{outline:3px solid #155eef;outline-offset:2px}
     body{font-family:Montserrat,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:#f2f4f7;margin:0;color:#121926}
     .wrap{max-width:900px;margin:0 auto;padding:16px}
     .card{background:#fff;border:1px solid #eaecf0;border-radius:14px;padding:14px;box-shadow:0 4px 14px rgba(15,23,42,.06)}
@@ -826,16 +911,27 @@ export function renderArticleDetailPage(params: {
     .sentimentBadge.neg{color:#b42318;background:rgba(240,68,56,.14);border:1px solid rgba(240,68,56,.45)}
     a{color:#175cd3;text-decoration:none}
     a:hover{text-decoration:underline}
-  </style></head><body><main class="wrap">
+  </style></head><body><a class="skipLink" href="#main-content">Bỏ qua đến nội dung chính</a><main id="main-content" class="wrap" role="main">
     <p><a href="/">← Về trang chủ</a></p>
     <article class="card">
       <h1>${escapeHtml(p.title)}</h1>
       <p class="meta">${escapeHtml(p.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(p.publishedAt))}</p>
       ${renderSentimentBadge(p.sentimentLabel)}
-      <img class="thumb" src="${escapeAttribute(p.imageUrl || LOGO_URL)}" alt="${escapeAttribute(p.title)}" />
+      ${renderResponsiveImage(p.imageUrl || LOGO_URL, "thumb", p.title, {
+        width: 1200,
+        height: 675,
+        loading: "eager",
+        fetchpriority: "high",
+        sizes: "(max-width: 900px) 100vw, 900px"
+      })}
       <p><strong>Tóm tắt:</strong> ${escapeHtml(p.summaryVi)}</p>
       <p><strong>Nội dung trích:</strong> ${escapeHtml(p.snippet)}</p>
       <p><a href="${escapeAttribute(p.sourceUrl)}" target="_blank" rel="noopener noreferrer">Mở tài liệu nguồn gốc</a></p>
     </article>
-  </main></body></html>`;
+  </main><script>
+    const rumPayloadBase = { routeTemplate: "article", deviceClass: window.innerWidth < 768 ? "mobile" : "desktop", path: location.pathname + location.search, cacheStatus: ${JSON.stringify(p.cacheStatus ?? "miss")} };
+    function sendRum(metric){ try{ navigator.sendBeacon("/api/rum", JSON.stringify({ ...rumPayloadBase, ...metric })); } catch {} }
+    const nav = performance.getEntriesByType("navigation")[0];
+    if (nav) sendRum({ metric: "TTFB", value: nav.responseStart });
+  </script></body></html>`;
 }

@@ -8,14 +8,18 @@
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
     "migrate:local": "wrangler d1 migrations apply vn_market_news --local",
-    "migrate:remote": "wrangler d1 migrations apply vn_market_news --remote"
+    "migrate:remote": "wrangler d1 migrations apply vn_market_news --remote",
+    "ci:lighthouse": "lhci autorun --config=.lighthouserc.json",
+    "ci:a11y": "pa11y-ci --config .pa11yci.json"
   },
   "dependencies": {
     "fast-xml-parser": "^4.5.0",
     "hono": "^4.6.10"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.15.1",
     "@cloudflare/workers-types": "^4.20260415.0",
+    "pa11y-ci": "^4.0.1",
     "typescript": "^5.8.3",
     "wrangler": "^4.13.2"
   }
