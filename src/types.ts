@@ -18,6 +18,10 @@ export interface Env {
   TELEGRAM_BOT_USERNAME?: string;
   /** Must match Telegram setWebhook secret_token; header X-Telegram-Bot-Api-Secret-Token */
   TELEGRAM_WEBHOOK_SECRET?: string;
+  /** Cloudflare Images account hash for imagedelivery.net URLs */
+  CF_IMAGES_ACCOUNT_HASH?: string;
+  /** Variant name for hosted Images delivery */
+  CF_IMAGES_VARIANT?: string;
 }
 
 export type NewsSourceType = "rss" | "html_list";
@@ -102,6 +106,34 @@ export interface CafeFMarketSnapshot {
   sections: string[];
   notes: string[];
   sourceUrl: string;
+}
+
+export interface HSXTopVolumeItem {
+  symbol: string;
+  price: string;
+  volume: string;
+  ratioPct: string;
+  lot: string;
+}
+
+export interface HSXVNIndexPoint {
+  symbol: string;
+  time: number;
+  openPrice: number;
+  closePrice: number;
+  highPrice: number;
+  lowPrice: number;
+  volume: number;
+}
+
+export interface HSXMarketSnapshot {
+  fetchedAt: string;
+  topVolume: HSXTopVolumeItem[];
+  vnindex1W: HSXVNIndexPoint[];
+  vnindex1M: HSXVNIndexPoint[];
+  vnindex1Y: HSXVNIndexPoint[];
+  statsUrl: string;
+  chartUrl: string;
 }
 
 export interface NewsSourceRecord {

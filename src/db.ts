@@ -274,6 +274,91 @@ export async function setArticleSummary(db: D1Database, articleId: number, summa
     .run();
 }
 
+export async function createManualArticle(
+  db: D1Database,
+  article: NormalizedArticle & { summaryVi?: string | null; imageUrl?: string | null }
+): Promise<void> {
+  await upsertArticle(db, article);
+  const saved = await getArticleByUrl(db, article.url);
+  if (!saved) return;
+  if (article.summaryVi && article.summaryVi.trim()) {
+    await setArticleSummary(db, saved.id, article.summaryVi.trim());
+  }
+  if (article.imageUrl && article.imageUrl.trim()) {
+    await setArticleImageUrl(db, saved.id, article.imageUrl.trim());
+  }
+}
+
+export async function listRecentManualArticles(db: D1Database, limit = 20): Promise<StoredArticle[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
+       FROM articles
+       WHERE source_id = 'cms-manual'
+       ORDER BY published_at DESC, id DESC
+       LIMIT ?1`
+    )
+    .bind(limit)
+    .all<D1ResultRow>();
+
+  return results.map((row) => ({
+    id: row.id,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    title: row.title,
+    url: row.url,
+    publishedAt: row.published_at,
+    snippet: row.snippet ?? "",
+    contentLimited: row.content_limited === 1,
+    summaryVi: row.summary_vi,
+    imageUrl: row.image_url ?? null
+  }));
+}
+
+export async function updateManualArticle(
+  db: D1Database,
+  articleId: number,
+  article: {
+    title: string;
+    url: string;
+    publishedAt: string;
+    snippet: string;
+    summaryVi: string | null;
+    imageUrl: string | null;
+    sourceName: string;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE articles
+       SET title = ?1,
+           url = ?2,
+           published_at = ?3,
+           snippet = ?4,
+           summary_vi = ?5,
+           image_url = ?6,
+           source_name = ?7,
+           updated_at = datetime('now')
+       WHERE id = ?8
+         AND source_id = 'cms-manual'`
+    )
+    .bind(
+      article.title,
+      article.url,
+      article.publishedAt,
+      article.snippet,
+      article.summaryVi,
+      article.imageUrl,
+      article.sourceName,
+      articleId
+    )
+    .run();
+}
+
+export async function deleteManualArticle(db: D1Database, articleId: number): Promise<void> {
+  await db.prepare(`DELETE FROM articles WHERE id = ?1 AND source_id = 'cms-manual'`).bind(articleId).run();
+}
+
 export async function upsertDailyReport(db: D1Database, report: DailyReport): Promise<void> {
   await db
     .prepare(

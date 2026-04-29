@@ -13,6 +13,106 @@ export const NEWS_SOURCES: NewsSourceConfig[] = [
     isDefault: true
   },
   {
+    id: "vietstock-kinh-te-dau-tu-the-gioi",
+    name: "Vietstock Kinh te dau tu (The gioi)",
+    type: "rss",
+    url: "https://vietstock.vn/768/kinh-te/kinh-te-dau-tu.rss",
+    feedUrl: "https://vietstock.vn/768/kinh-te/kinh-te-dau-tu.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-kinh-te-vi-mo",
+    name: "Vietstock Kinh te vi mo",
+    type: "rss",
+    url: "https://vietstock.vn/761/kinh-te/vi-mo.rss",
+    feedUrl: "https://vietstock.vn/761/kinh-te/vi-mo.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-chung-khoan-the-gioi",
+    name: "Vietstock Chung khoan the gioi",
+    type: "rss",
+    url: "https://vietstock.vn/773/the-gioi/chung-khoan-the-gioi.rss",
+    feedUrl: "https://vietstock.vn/773/the-gioi/chung-khoan-the-gioi.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-tai-chinh-quoc-te",
+    name: "Vietstock Tai chinh quoc te",
+    type: "rss",
+    url: "https://vietstock.vn/772/the-gioi/tai-chinh-quoc-te.rss",
+    feedUrl: "https://vietstock.vn/772/the-gioi/tai-chinh-quoc-te.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-kinh-te-nganh",
+    name: "Vietstock Kinh te nganh",
+    type: "rss",
+    url: "https://vietstock.vn/775/the-gioi/kinh-te-nganh.rss",
+    feedUrl: "https://vietstock.vn/775/the-gioi/kinh-te-nganh.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-ngan-hang",
+    name: "Vietstock Ngan hang",
+    type: "rss",
+    url: "https://vietstock.vn/757/tai-chinh/ngan-hang.rss",
+    feedUrl: "https://vietstock.vn/757/tai-chinh/ngan-hang.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-bao-hiem",
+    name: "Vietstock Bao hiem",
+    type: "rss",
+    url: "https://vietstock.vn/3113/tai-chinh/bao-hiem.rss",
+    feedUrl: "https://vietstock.vn/3113/tai-chinh/bao-hiem.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-thue-va-ngan-sach",
+    name: "Vietstock Thue va ngan sach",
+    type: "rss",
+    url: "https://vietstock.vn/758/tai-chinh/thue-va-ngan-sach.rss",
+    feedUrl: "https://vietstock.vn/758/tai-chinh/thue-va-ngan-sach.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-nhan-dinh-thi-truong",
+    name: "Vietstock Nhan dinh thi truong",
+    type: "rss",
+    url: "https://vietstock.vn/1636/nhan-dinh-phan-tich/nhan-dinh-thi-truong.rss",
+    feedUrl: "https://vietstock.vn/1636/nhan-dinh-phan-tich/nhan-dinh-thi-truong.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
+    id: "vietstock-tai-san-so",
+    name: "Vietstock Tai san so",
+    type: "rss",
+    url: "https://vietstock.vn/16312/tai-chinh/tai-san-so.rss",
+    feedUrl: "https://vietstock.vn/16312/tai-chinh/tai-san-so.rss",
+    baseUrl: "https://vietstock.vn",
+    enabled: true,
+    isDefault: true
+  },
+  {
     id: "cafef-thi-truong-chung-khoan",
     name: "CafeF",
     type: "rss",
@@ -32,29 +132,6 @@ export const NEWS_SOURCES: NewsSourceConfig[] = [
     enabled: true,
     isDefault: true
   },
-  {
-    id: "hose-tin-hoat-dong",
-    name: "HOSE",
-    type: "rss",
-    url: "https://www.hsx.vn/Modules/Cms/Web/ArticleInCategory/28ca0f0f-7ce1-4ab9-b80d-b517fce9f9f8?exclude=00000000-0000-0000-0000-000000000000&lim=True",
-    feedUrl: "https://www.hsx.vn/Modules/Cms/Web/ArticleInCategory/28ca0f0f-7ce1-4ab9-b80d-b517fce9f9f8?exclude=00000000-0000-0000-0000-000000000000&lim=True",
-    baseUrl: "https://www.hsx.vn",
-    enabled: false,
-    isDefault: true
-  },
-  {
-    id: "vndirect-market-news",
-    name: "VNDIRECT Market News",
-    type: "html_list",
-    baseUrl: "https://www.vndirect.com.vn",
-    listUrl: "https://www.vndirect.com.vn/en/market-news/",
-    enabled: false,
-    allowCrawl: true,
-    respectRobots: true,
-    extractorKey: "generic-market-news",
-    notes: "Selective HTML crawl. Enable only after validation against robots/terms.",
-    isDefault: true
-  }
 ];
 
 export const MEDIA_SOURCES = [

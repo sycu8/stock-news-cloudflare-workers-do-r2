@@ -12,8 +12,9 @@ import {
   upsertArticle,
   upsertDailyReport
 } from "../db";
-import type { CafeFMarketSnapshot, DailyReport, Env, ReportHistoryEntry, StoredArticle } from "../types";
+import type { CafeFMarketSnapshot, DailyReport, Env, HSXMarketSnapshot, ReportHistoryEntry, StoredArticle } from "../types";
 import { getCafeFMarketSnapshot } from "./cafef-market";
+import { getHSXMarketSnapshot } from "./hsx-market";
 import { loadDailyMedia, refreshDailyMedia } from "./daily-media";
 import { fetchAllSourcesFromDb } from "./fetch-news";
 import { summarizeArticle, summarizeArticleFromSource, summarizeDailyOverview } from "./summarizer";
@@ -21,6 +22,7 @@ import { fetchAndExtractSource } from "./source-extract";
 import { ensureGeneratedThumbnail } from "./image-gen";
 import { analyzeSentimentForArticles } from "./sentiment";
 import { collapseDuplicateNews } from "./news-cluster";
+import { ensureOptimizedImageAsset } from "./image-cache";
 
 const DAILY_CACHE_KEY = "today-report-cache";
 const LAST_GOOD_FEED_KEY = "today-report-last-good";
@@ -40,6 +42,7 @@ interface TodayFeedResponse {
   articles: StoredArticle[];
   mediaItems: import("../types").MediaItemRecord[];
   marketSnapshot: CafeFMarketSnapshot | null;
+  hsxMarketSnapshot: HSXMarketSnapshot | null;
   reportHistory: ReportHistoryEntry[];
   total: number;
   cacheHit: boolean;
@@ -66,7 +69,13 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
   for (const article of toEnrich) {
     const extracted = await fetchAndExtractSource(article.url);
     if (extracted?.imageUrl && (!article.imageUrl || article.imageUrl.trim().length === 0)) {
-      await setArticleImageUrl(env.DB, article.id, extracted.imageUrl);
+      const optimized =
+        (await ensureOptimizedImageAsset({
+          env,
+          sourceUrl: extracted.imageUrl,
+          namespace: "article-thumb"
+        })) ?? extracted.imageUrl;
+      await setArticleImageUrl(env.DB, article.id, optimized);
     }
     if (
       (!article.imageUrl || article.imageUrl.trim().length === 0) &&
@@ -186,7 +195,7 @@ export async function getFeedByDate(
         cachedAt?: string;
       };
       if (typed.report && Array.isArray(typed.articles)) {
-        const marketSnapshot = await getCafeFMarketSnapshot(env);
+        const [marketSnapshot, hsxMarketSnapshot] = await Promise.all([getCafeFMarketSnapshot(env), getHSXMarketSnapshot(env)]);
         const reportHistory = await getReportHistory(env, reportDate);
         const filtered = normalizedSource
           ? typed.articles.filter(
@@ -207,6 +216,7 @@ export async function getFeedByDate(
           articles: deduped.slice(offset, offset + pageSize),
           mediaItems: Array.isArray(typed.mediaItems) ? typed.mediaItems : [],
           marketSnapshot,
+          hsxMarketSnapshot,
           reportHistory,
           total: deduped.length,
           cacheHit: true,
@@ -216,7 +226,7 @@ export async function getFeedByDate(
     }
   }
 
-    const [report, paged, mediaItems, marketSnapshot, reportHistory] = await Promise.all([
+  const [report, paged, mediaItems, marketSnapshot, hsxMarketSnapshot, reportHistory] = await Promise.all([
     getDailyReport(env.DB, reportDate),
     getArticlesByDatePaged({
       db: env.DB,
@@ -228,6 +238,7 @@ export async function getFeedByDate(
       }),
       loadDailyMedia(env, reportDate),
       getCafeFMarketSnapshot(env),
+      getHSXMarketSnapshot(env),
       getReportHistory(env, reportDate)
   ]);
 
@@ -255,6 +266,7 @@ export async function getFeedByDate(
           articles: merged.slice(offset, offset + pageSize),
           mediaItems: Array.isArray(typed.mediaItems) ? typed.mediaItems : [],
           marketSnapshot,
+          hsxMarketSnapshot,
           reportHistory,
           total: merged.length,
           cacheHit: true,
@@ -277,6 +289,7 @@ export async function getFeedByDate(
     articles: dedupedPaged,
     mediaItems,
     marketSnapshot,
+    hsxMarketSnapshot,
     reportHistory,
     total: dedupedPaged.length,
     cacheHit: false,

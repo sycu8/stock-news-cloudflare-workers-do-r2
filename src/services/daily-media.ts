@@ -6,6 +6,7 @@ import { formatDateOnly, toIsoOrNow } from "../utils/date";
 import { stripHtml, truncate } from "../utils/text";
 import { fetchAndExtractSource } from "./source-extract";
 import { ensureGeneratedThumbnail } from "./image-gen";
+import { ensureOptimizedImageAsset } from "./image-cache";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -49,7 +50,12 @@ export async function refreshDailyMedia(env: Env, reportDate: string, articles: 
     if (!item.imageUrl) {
       const extracted = await fetchAndExtractSource(item.url);
       if (extracted?.imageUrl) {
-        item.imageUrl = extracted.imageUrl;
+        item.imageUrl =
+          (await ensureOptimizedImageAsset({
+            env,
+            sourceUrl: extracted.imageUrl,
+            namespace: "media-thumb"
+          })) ?? extracted.imageUrl;
       } else if (generatedCount < 4) {
         const gen = await ensureGeneratedThumbnail({
           env,
@@ -62,6 +68,13 @@ export async function refreshDailyMedia(env: Env, reportDate: string, articles: 
           generatedCount += 1;
         }
       }
+    } else if (/^https?:\/\//i.test(item.imageUrl)) {
+      item.imageUrl =
+        (await ensureOptimizedImageAsset({
+          env,
+          sourceUrl: item.imageUrl,
+          namespace: "media-thumb"
+        })) ?? item.imageUrl;
     }
     await upsertMediaItem(env.DB, item);
   }

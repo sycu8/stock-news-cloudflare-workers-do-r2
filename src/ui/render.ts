@@ -1,4 +1,4 @@
-import type { CafeFMarketSnapshot, DailyReport, MediaItemRecord, ReportHistoryEntry, StoredArticle } from "../types";
+import type { CafeFMarketSnapshot, DailyReport, HSXMarketSnapshot, MediaItemRecord, ReportHistoryEntry, StoredArticle } from "../types";
 import { LOGO_URL } from "./brand";
 import { formatVietnamDateDisplay, formatVietnamDateTimeDisplay, formatVietnamTimeDisplay } from "../utils/date";
 import { classifySentimentText } from "../services/sentiment";
@@ -8,6 +8,7 @@ interface HomePageParams {
   report: DailyReport;
   mediaItems?: MediaItemRecord[];
   marketSnapshot?: CafeFMarketSnapshot | null;
+  hsxMarketSnapshot?: HSXMarketSnapshot | null;
   reportHistory?: ReportHistoryEntry[];
   pinnedArticles?: StoredArticle[];
   articles: StoredArticle[];
@@ -31,6 +32,7 @@ export function renderHomePage({
   report,
   mediaItems = [],
   marketSnapshot = null,
+  hsxMarketSnapshot = null,
   reportHistory = [],
   pinnedArticles = [],
   articles,
@@ -543,6 +545,19 @@ export function renderHomePage({
       .cafefLinkMeta{ font-size:.82rem; color: var(--muted); }
       .marketMini{ display:grid; grid-template-columns: 96px 1fr; gap:10px; align-items:center; }
       .marketMini img{ width:96px; height:64px; object-fit:cover; border-radius:10px; border:1px solid var(--border); }
+      .hsxGrid{ display:grid; grid-template-columns: 1.1fr .9fr; gap:12px; margin-top:12px; }
+      .hsxCard{ border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--surface) 88%, transparent); }
+      .hsxTable{ width:100%; border-collapse:collapse; font-size:.88rem; }
+      .hsxTable th,.hsxTable td{ padding:7px 6px; border-bottom:1px solid var(--border); text-align:right; }
+      .hsxTable th:first-child,.hsxTable td:first-child{ text-align:left; font-weight:700; }
+      .hsxChartWrap{ width:100%; overflow:hidden; }
+      .hsxChart{ width:100%; height:auto; display:block; }
+      .hsxLegend{ display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:.82rem; margin-top:6px; }
+      .hsxRangeTabs{ display:flex; gap:8px; flex-wrap:wrap; margin: 8px 0 10px; }
+      .hsxRangeBtn{ border:1px solid var(--border); border-radius:999px; padding:7px 11px; background:var(--surface2); color:var(--text); font:inherit; font-size:.84rem; font-weight:700; cursor:pointer; }
+      .hsxRangeBtn.active{ border-color: color-mix(in srgb, var(--primary2) 60%, var(--border)); background: color-mix(in srgb, var(--primary2) 12%, transparent); }
+      .hsxChartPanel{ display:none; }
+      .hsxChartPanel.active{ display:block; }
       .footer { margin: 18px 0 8px; padding: 18px 16px; border-radius: 16px; background: linear-gradient(135deg, #0f172a 0%, #111827 100%); color:#fff; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap: wrap; }
       .footerBrand { display:flex; align-items:center; gap:12px; }
       .footerLogo { width:52px; height:52px; border-radius: 12px; object-fit: cover; background:#fff; padding: 4px; }
@@ -570,6 +585,7 @@ export function renderHomePage({
         .cardThumb{ max-height: 160px; }
         .mediaThumb{ max-height: 145px; }
         .cafefGrid{ grid-template-columns: 1fr; }
+        .hsxGrid{ grid-template-columns: 1fr; }
         .filter { align-items: stretch; }
         .filter label { width: 100%; }
         .filter select, .filter button { width: 100%; }
@@ -730,6 +746,22 @@ export function renderHomePage({
               <ul class="marketList" style="margin-top:8px;">${marketNotes || "<li>Dữ liệu chỉ mang tính tham khảo.</li>"}</ul>
             </section>
           </div>
+          ${
+            hsxMarketSnapshot
+              ? `<div class="hsxGrid">
+                  <section class="hsxCard">
+                    <h3 style="margin-top:0;">Khối lượng giao dịch cao nhất hôm nay</h3>
+                    <p class="meta">Nguồn HSX: <a href="${escapeAttribute(hsxMarketSnapshot.statsUrl)}" target="_blank" rel="noopener noreferrer">Top trong ngày</a></p>
+                    ${renderHSXTopVolumeTable(hsxMarketSnapshot)}
+                  </section>
+                  <section class="hsxCard">
+                    <h3 style="margin-top:0;">VNINDEX 1 năm</h3>
+                    <p class="meta">Phong cách hiển thị tham chiếu từ trang biểu đồ HSX. Dữ liệu: <a href="${escapeAttribute(hsxMarketSnapshot.chartUrl)}" target="_blank" rel="noopener noreferrer">Biểu đồ HSX</a></p>
+                    ${renderVNIndexMultiRangeChart(hsxMarketSnapshot)}
+                  </section>
+                </div>`
+              : ""
+          }
         </div>
       </section>
 
@@ -811,6 +843,18 @@ export function renderHomePage({
         btn.addEventListener("click", () => {
           const id = btn.getAttribute("aria-controls");
           if (id) activateBriefTab(id);
+        });
+      });
+      const hsxRangeButtons = Array.from(document.querySelectorAll(".hsxRangeBtn"));
+      const hsxRangePanels = Array.from(document.querySelectorAll(".hsxChartPanel"));
+      function activateHSXRange(id){
+        hsxRangeButtons.forEach((btn) => btn.classList.toggle("active", btn.getAttribute("data-range-target") === id));
+        hsxRangePanels.forEach((panel) => panel.classList.toggle("active", panel.id === id));
+      }
+      hsxRangeButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-range-target");
+          if (id) activateHSXRange(id);
         });
       });
       const expandButtons = Array.from(document.querySelectorAll(".historyExpandBtn"));
@@ -1045,6 +1089,128 @@ function buildCuratedCafeFLinks(snapshot: CafeFMarketSnapshot | null): Array<{ l
     pick("Công bố thông tin", ["công bố", "thông tin"], "https://cafef.vn/du-lieu/cong-bo-thong-tin.chn"),
     pick("Dữ liệu doanh nghiệp", ["doanh nghiệp"], "https://cafef.vn/du-lieu/du-lieu-doanh-nghiep.chn")
   ];
+}
+
+function renderHSXTopVolumeTable(snapshot: HSXMarketSnapshot): string {
+  const rows = snapshot.topVolume
+    .slice(0, 10)
+    .map(
+      (item) => `<tr>
+        <td>${escapeHtml(item.symbol)}</td>
+        <td>${escapeHtml(item.price)}</td>
+        <td>${escapeHtml(item.volume)}</td>
+        <td>${escapeHtml(item.ratioPct)}%</td>
+      </tr>`
+    )
+    .join("");
+  return `<table class="hsxTable">
+    <thead><tr><th>Mã</th><th>Giá</th><th>KL</th><th>Tỷ trọng</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4">Đang cập nhật.</td></tr>'}</tbody>
+  </table>`;
+}
+
+function renderVNIndexMultiRangeChart(snapshot: HSXMarketSnapshot): string {
+  const tabs: Array<{ id: "1w" | "1m" | "1y"; label: string; points: typeof snapshot.vnindex1Y }> = [
+    { id: "1w", label: "Tuần", points: snapshot.vnindex1W },
+    { id: "1m", label: "Tháng", points: snapshot.vnindex1M },
+    { id: "1y", label: "Năm", points: snapshot.vnindex1Y }
+  ];
+  const hasAny = tabs.some((t) => t.points.length > 0);
+  if (!hasAny) return '<p class="muted">Chưa lấy được dữ liệu VNINDEX.</p>';
+
+  const buttons = tabs
+    .map(
+      (tab, idx) =>
+        `<button type="button" class="hsxRangeBtn ${idx === 0 ? "active" : ""}" data-range-target="hsx-range-${tab.id}">${escapeHtml(
+          tab.label
+        )}</button>`
+    )
+    .join("");
+  const panels = tabs
+    .map((tab, idx) => `<div id="hsx-range-${tab.id}" class="hsxChartPanel ${idx === 0 ? "active" : ""}">${renderSingleVNIndexChart(tab.points, tab.label)}</div>`)
+    .join("");
+
+  return `<div>
+    <div class="hsxRangeTabs" role="tablist" aria-label="Khoảng thời gian VNINDEX">${buttons}</div>
+    ${panels}
+  </div>`;
+}
+
+function renderSingleVNIndexChart(points: HSXMarketSnapshot["vnindex1Y"], label: string): string {
+  if (!points.length) return `<p class="muted">Chưa lấy được dữ liệu VNINDEX theo ${escapeHtml(label.toLowerCase())}.</p>`;
+
+  const width = 680;
+  const height = 260;
+  const padL = 18;
+  const padR = 8;
+  const padT = 14;
+  const padB = 26;
+  const closes = points.map((p) => p.closePrice);
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const span = Math.max(1, max - min);
+  const x = (idx: number) => padL + (idx / Math.max(1, points.length - 1)) * (width - padL - padR);
+  const y = (value: number) => padT + (1 - (value - min) / span) * (height - padT - padB);
+  const path = points.map((p, idx) => `${idx === 0 ? "M" : "L"} ${x(idx).toFixed(1)} ${y(p.closePrice).toFixed(1)}`).join(" ");
+  const area = `${path} L ${x(points.length - 1).toFixed(1)} ${(height - padB).toFixed(1)} L ${x(0).toFixed(1)} ${(height - padB).toFixed(1)} Z`;
+  const first = points[0]!;
+  const last = points[points.length - 1]!;
+  const trendUp = last.closePrice >= first.closePrice;
+  const stroke = trendUp ? "#155eef" : "#b42318";
+  const fill = trendUp ? "rgba(21,94,239,0.14)" : "rgba(180,35,24,0.12)";
+  const labelIndexes = Array.from(new Set([0, Math.floor(points.length / 3), Math.floor((points.length * 2) / 3), points.length - 1])).filter(
+    (idx) => idx >= 0 && idx < points.length
+  );
+  const labels = labelIndexes
+    .map((idx) => {
+      const date = new Date(points[idx]!.time * 1000);
+      const format =
+        label === "Tuần"
+          ? new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" })
+          : label === "Tháng"
+            ? new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" })
+            : new Intl.DateTimeFormat("vi-VN", { month: "short", year: "2-digit", timeZone: "Asia/Ho_Chi_Minh" });
+      const labelText = format.format(date);
+      return `<text x="${x(idx).toFixed(1)}" y="${height - 8}" text-anchor="${idx === 0 ? "start" : idx === points.length - 1 ? "end" : "middle"}" fill="currentColor" opacity="0.65" font-size="11">${escapeHtml(labelText)}</text>`;
+    })
+    .join("");
+  const lastX = x(points.length - 1).toFixed(1);
+  const lastY = y(last.closePrice).toFixed(1);
+  const firstDate = formatVNIndexDate(points[0]!.time);
+  const lastDate = formatVNIndexDate(points[points.length - 1]!.time);
+  return `<div class="hsxChartWrap">
+    <svg class="hsxChart" viewBox="0 0 ${width} ${height}" role="img" aria-label="VNINDEX 1 year chart">
+      <defs>
+        <linearGradient id="vnidxFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="${fill}" />
+          <stop offset="100%" stop-color="rgba(148,163,184,0.02)" />
+        </linearGradient>
+      </defs>
+      <line x1="${padL}" y1="${height - padB}" x2="${width - padR}" y2="${height - padB}" stroke="currentColor" opacity="0.12" />
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${height - padB}" stroke="currentColor" opacity="0.08" />
+      <path d="${area}" fill="url(#vnidxFill)" />
+      <path d="${path}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+      <circle cx="${lastX}" cy="${lastY}" r="3.5" fill="${stroke}" />
+      ${labels}
+    </svg>
+    <div class="hsxLegend">
+      <span>${escapeHtml(firstDate)} • ${escapeHtml(formatCompactNumber(first.closePrice))} điểm</span>
+      <strong>${escapeHtml(lastDate)} • ${escapeHtml(formatCompactNumber(last.closePrice))} điểm</strong>
+    </div>
+  </div>`;
+}
+
+function formatCompactNumber(n: number): string {
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(n);
+}
+
+function formatVNIndexDate(unixSec: number): string {
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh"
+  }).format(new Date(unixSec * 1000));
 }
 
 export function renderArticleDetailPage(params: {

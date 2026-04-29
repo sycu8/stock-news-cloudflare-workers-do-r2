@@ -1,16 +1,20 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
+  createManualArticle,
   createSource,
+  deleteManualArticle,
   deleteSource,
   ensureDefaultSources,
   getArticleByUrl,
   getTodayDateKey,
   getLatestSystemStatusSnapshot,
   listLatestFeedHealth,
+  listRecentManualArticles,
   listRecentCrawlRuns,
   listSources,
-  toggleSource
+  toggleSource,
+  updateManualArticle
 } from "./db";
 import { NEWS_SOURCES } from "./config/sources";
 import { getFeedByDate, getTodayFeed, refreshDailyNews } from "./services/refresh";
@@ -27,7 +31,7 @@ import {
   verifyTelegramWebhookSecret
 } from "./services/telegram-bot";
 import { generateTodayRssXml } from "./ui/rss";
-import { renderAdminSourcesPage } from "./ui/admin";
+import { renderAdminDashboardPage, renderAdminLoginPage, renderAdminSourcesPage } from "./ui/admin";
 import { buildChartsForToday } from "./ui/charts";
 import { extractHotKeywords } from "./services/hot-keywords";
 import { getViewsMap, incrementView } from "./services/views";
@@ -37,11 +41,44 @@ import { fetchAndExtractSource } from "./services/source-extract";
 import { fetchOptimizedRemoteImage } from "./services/cf-image-fetch";
 
 const app = new Hono<{ Bindings: Env }>();
+const ADMIN_COOKIE_NAME = "admin_token";
+const ADMIN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 app.use("*", async (c, next) => {
   await ensureDefaultSources(c.env.DB);
   await next();
 });
+
+function getCookieValue(c: Context<{ Bindings: Env }> | any, name: string): string | null {
+  const cookieHeader = c.req.header("cookie") ?? "";
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(";");
+  const prefix = `${name}=`;
+  for (const part of parts) {
+    const v = part.trim();
+    if (v.startsWith(prefix)) {
+      const raw = v.slice(prefix.length);
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    }
+  }
+  return null;
+}
+
+function getAdminToken(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): string | null {
+  // Prefer cookie-based login to avoid leaking token in URL query params.
+  const fromCookie = getCookieValue(c as any, ADMIN_COOKIE_NAME);
+  if (fromCookie) return fromCookie;
+  return c.req.header("x-admin-token") ?? c.req.query("token") ?? null;
+}
+
+function isAdminAuthorized(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): boolean {
+  const token = getAdminToken(c);
+  return Boolean(token && token === c.env.ADMIN_REFRESH_TOKEN);
+}
 
 app.get("/", async (c) => {
   try {
@@ -130,6 +167,7 @@ app.get("/", async (c) => {
         articles: remainingForUi,
         mediaItems: feed.mediaItems,
         marketSnapshot: feed.marketSnapshot,
+        hsxMarketSnapshot: feed.hsxMarketSnapshot,
         availableSources,
         selectedSource: source || undefined,
         selectedSentiment: sentiment === "positive" || sentiment === "neutral" || sentiment === "negative" ? sentiment : undefined,
@@ -469,6 +507,63 @@ app.get("/status", async (c) => {
   }
 });
 
+app.get("/admin/login", (c) => {
+  return c.html(renderAdminLoginPage({ message: c.req.query("message") ?? undefined }));
+});
+
+app.post("/admin/login", async (c) => {
+  try {
+    const form = await c.req.formData();
+    const token = String(form.get("token") ?? "").trim();
+    if (!token) return c.redirect(`/admin/login?message=${encodeURIComponent("Token không được để trống")}`, 302);
+    if (token !== c.env.ADMIN_REFRESH_TOKEN) {
+      return c.redirect(`/admin/login?message=${encodeURIComponent("Token không đúng")}`, 302);
+    }
+
+    const secure = c.req.url.startsWith("https://");
+    const cookie = `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/admin; Max-Age=${ADMIN_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${
+      secure ? "; Secure" : ""
+    }`;
+    c.header("Set-Cookie", cookie);
+    return c.redirect(`/admin?message=${encodeURIComponent("Đăng nhập admin thành công")}`, 302);
+  } catch (error) {
+    console.error("POST /admin/login failed:", error);
+    return c.redirect(`/admin/login?message=${encodeURIComponent("Đăng nhập thất bại")}`, 302);
+  }
+});
+
+app.get("/admin", async (c) => {
+  if (!isAdminAuthorized(c)) {
+    return c.html(renderUnauthorizedAdmin());
+  }
+
+  try {
+    const [sources, runs, manualArticles, subscriberCount] = await Promise.all([
+      listSources(c.env.DB),
+      listRecentCrawlRuns(c.env.DB, 10),
+      listRecentManualArticles(c.env.DB, 50),
+      getTelegramSubscriberCount(c.env)
+    ]);
+
+    return c.html(
+      renderAdminDashboardPage({
+        sourceCount: sources.length,
+        enabledSourceCount: sources.filter((item) => item.enabled).length,
+        manualArticleCount: manualArticles.length,
+        recentRunCount: runs.length,
+        subscriberCount,
+        telegramConfigured: isTelegramNotifyConfigured(c.env),
+        imagesHostedConfigured: Boolean(c.env.CF_IMAGES_ACCOUNT_HASH?.trim()),
+        imagesVariant: c.env.CF_IMAGES_VARIANT?.trim() || "public",
+        message: c.req.query("message") ?? undefined
+      })
+    );
+  } catch (error) {
+    console.error("GET /admin failed:", error);
+    return c.text("Failed to load admin dashboard", 500);
+  }
+});
+
 app.post("/admin/refresh", async (c) => {
   if (!isAdminAuthorized(c)) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -496,12 +591,16 @@ app.get("/admin/sources", async (c) => {
   }
 
   try {
-    const [sources, runs] = await Promise.all([listSources(c.env.DB), listRecentCrawlRuns(c.env.DB, 20)]);
+    const [sources, runs, manualArticles] = await Promise.all([
+      listSources(c.env.DB),
+      listRecentCrawlRuns(c.env.DB, 20),
+      listRecentManualArticles(c.env.DB, 12)
+    ]);
     return c.html(
       renderAdminSourcesPage({
-        token: getAdminToken(c) ?? "",
         sources,
         runs,
+        manualArticles,
         message: c.req.query("message") ?? undefined
       })
     );
@@ -562,6 +661,151 @@ app.post("/admin/sources", async (c) => {
   }
 });
 
+app.post("/admin/rss", async (c) => {
+  if (!isAdminAuthorized(c)) {
+    return c.text("Unauthorized", 401);
+  }
+  try {
+    const form = await c.req.formData();
+    const name = String(form.get("name") ?? "").trim();
+    const feedUrl = cleanOptional(String(form.get("feedUrl") ?? ""));
+    const baseUrl = cleanOptional(String(form.get("baseUrl") ?? ""));
+    const enabled = String(form.get("enabled") ?? "true") === "true";
+    if (!name || !feedUrl) {
+      return redirectAdmin(c, "Tên nguồn và feed_url là bắt buộc");
+    }
+    const sourceId = slugify(name);
+    await createSource(c.env.DB, {
+      id: sourceId,
+      name,
+      type: "rss",
+      baseUrl,
+      feedUrl,
+      listUrl: null,
+      enabled,
+      allowCrawl: false,
+      respectRobots: true,
+      extractorKey: null,
+      notes: "Added from CMS RSS form",
+      isDefault: false
+    });
+    return redirectAdmin(c, `Đã thêm RSS feed ${name}`);
+  } catch (error) {
+    console.error("POST /admin/rss failed:", error);
+    return redirectAdmin(c, "Không thể thêm RSS feed");
+  }
+});
+
+app.post("/admin/articles/manual", async (c) => {
+  if (!isAdminAuthorized(c)) {
+    return c.text("Unauthorized", 401);
+  }
+  try {
+    const form = await c.req.formData();
+    const title = String(form.get("title") ?? "").trim();
+    const url = String(form.get("url") ?? "").trim();
+    const sourceName = String(form.get("sourceName") ?? "CMS Manual").trim() || "CMS Manual";
+    const summaryVi = cleanOptional(String(form.get("summaryVi") ?? ""));
+    const snippet = String(form.get("snippet") ?? "").trim() || summaryVi || title;
+    const imageUrl = cleanOptional(String(form.get("imageUrl") ?? ""));
+    const publishedAtRaw = cleanOptional(String(form.get("publishedAt") ?? ""));
+
+    if (!title || !url) {
+      return redirectAdmin(c, "Bài viết thủ công cần title và URL");
+    }
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) {
+      return redirectAdmin(c, "URL bài viết không hợp lệ");
+    }
+
+    const publishedAt = publishedAtRaw ? new Date(publishedAtRaw) : new Date();
+    if (Number.isNaN(publishedAt.getTime())) {
+      return redirectAdmin(c, "Ngày giờ xuất bản không hợp lệ");
+    }
+
+    await createManualArticle(c.env.DB, {
+      sourceId: "cms-manual",
+      sourceName,
+      title,
+      url: parsed.toString(),
+      publishedAt: publishedAt.toISOString(),
+      snippet,
+      contentLimited: false,
+      summaryVi,
+      imageUrl
+    });
+    return redirectAdmin(c, `Đã thêm bài viết thủ công: ${title}`);
+  } catch (error) {
+    console.error("POST /admin/articles/manual failed:", error);
+    return redirectAdmin(c, "Không thể thêm bài viết thủ công");
+  }
+});
+
+app.post("/admin/articles/manual/:id", async (c) => {
+  if (!isAdminAuthorized(c)) {
+    return c.text("Unauthorized", 401);
+  }
+  try {
+    const articleId = Number(c.req.param("id"));
+    if (!Number.isInteger(articleId) || articleId <= 0) {
+      return redirectAdmin(c, "ID bài viết không hợp lệ");
+    }
+
+    const form = await c.req.formData();
+    const title = String(form.get("title") ?? "").trim();
+    const url = String(form.get("url") ?? "").trim();
+    const sourceName = String(form.get("sourceName") ?? "CMS Manual").trim() || "CMS Manual";
+    const snippet = String(form.get("snippet") ?? "").trim();
+    const summaryVi = cleanOptional(String(form.get("summaryVi") ?? ""));
+    const imageUrl = cleanOptional(String(form.get("imageUrl") ?? ""));
+    const publishedAtRaw = String(form.get("publishedAt") ?? "").trim();
+
+    if (!title || !url || !publishedAtRaw) {
+      return redirectAdmin(c, "Thiếu dữ liệu để cập nhật bài viết");
+    }
+
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) {
+      return redirectAdmin(c, "URL bài viết không hợp lệ");
+    }
+    const publishedAt = new Date(publishedAtRaw);
+    if (Number.isNaN(publishedAt.getTime())) {
+      return redirectAdmin(c, "Ngày giờ xuất bản không hợp lệ");
+    }
+
+    await updateManualArticle(c.env.DB, articleId, {
+      title,
+      url: parsed.toString(),
+      publishedAt: publishedAt.toISOString(),
+      snippet: snippet || summaryVi || title,
+      summaryVi,
+      imageUrl,
+      sourceName
+    });
+    return redirectAdmin(c, `Đã cập nhật bài viết #${articleId}`);
+  } catch (error) {
+    console.error("POST /admin/articles/manual/:id failed:", error);
+    return redirectAdmin(c, "Không thể cập nhật bài viết thủ công");
+  }
+});
+
+app.post("/admin/articles/manual/:id/delete", async (c) => {
+  if (!isAdminAuthorized(c)) {
+    return c.text("Unauthorized", 401);
+  }
+  try {
+    const articleId = Number(c.req.param("id"));
+    if (!Number.isInteger(articleId) || articleId <= 0) {
+      return redirectAdmin(c, "ID bài viết không hợp lệ");
+    }
+    await deleteManualArticle(c.env.DB, articleId);
+    return redirectAdmin(c, `Đã xóa bài viết #${articleId}`);
+  } catch (error) {
+    console.error("POST /admin/articles/manual/:id/delete failed:", error);
+    return redirectAdmin(c, "Không thể xóa bài viết thủ công");
+  }
+});
+
 app.post("/admin/sources/:id/toggle", async (c) => {
   if (!isAdminAuthorized(c)) {
     return c.text("Unauthorized", 401);
@@ -611,22 +855,9 @@ console.log(
     .join(", ")}`
 );
 
-function getAdminToken(c: { req: { header(name: string): string | undefined; query(name: string): string | undefined } }): string | null {
-  return c.req.header("x-admin-token") ?? c.req.query("token") ?? null;
-}
-
-function isAdminAuthorized(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): boolean {
-  const token = getAdminToken(c);
-  return Boolean(token && token === c.env.ADMIN_REFRESH_TOKEN);
-}
-
 function redirectAdmin(c: Context<{ Bindings: Env }>, message: string) {
-  const token = c.req.query("token");
   const qs = new URLSearchParams();
   qs.set("message", message);
-  if (token) {
-    qs.set("token", token);
-  }
   return c.redirect(`/admin/sources?${qs.toString()}`, 302);
 }
 
@@ -653,7 +884,7 @@ function renderUnauthorizedAdmin(): string {
   return `<!doctype html>
   <html lang="vi"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Admin Login</title>
   <style>body{font-family:Inter,Arial,sans-serif;background:#f4f6fb;margin:0;padding:16px}.card{max-width:520px;margin:48px auto;background:#fff;border-radius:16px;padding:18px;box-shadow:0 6px 24px rgba(16,24,40,.06)}input,button{width:100%;padding:12px;border-radius:12px;font:inherit}input{border:1px solid #d0d5dd;margin:10px 0 12px}button{border:0;background:#155eef;color:#fff}</style></head>
-  <body><main class="card"><h1>Admin token required</h1><p>Nhập token để truy cập trang quản trị nguồn tin.</p><form method="GET" action="/admin/sources"><input name="token" type="password" placeholder="ADMIN_REFRESH_TOKEN" required /><button type="submit">Mở admin</button></form></main></body></html>`;
+  <body><main class="card"><h1>Admin token required</h1><p>Nhập token để truy cập trang quản trị.</p><form method="GET" action="/admin/login"><input name="token" type="password" placeholder="ADMIN_REFRESH_TOKEN" required /><button type="submit">Mở login</button></form></main></body></html>`;
 }
 
 function hotScore(a: { title: string; snippet: string; summaryVi: string | null; sourceName: string }): number {
