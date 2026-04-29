@@ -52,6 +52,16 @@ interface CrawlRunRow {
   created_at: string;
 }
 
+interface FeedHealthRow {
+  source_id: string;
+  source_name: string;
+  enabled: number;
+  status: "success" | "error" | null;
+  message: string | null;
+  fetched_count: number | null;
+  created_at: string | null;
+}
+
 interface MediaItemRow {
   id: number;
   kind: "youtube" | "news_image";
@@ -63,6 +73,17 @@ interface MediaItemRow {
   report_date: string;
   summary_vi: string | null;
   image_url: string | null;
+}
+
+interface SystemStatusSnapshotRow {
+  id: number;
+  report_date: string;
+  feed_ok_count: number;
+  feed_error_count: number;
+  feed_total_count: number;
+  ai_ok: number;
+  article_count: number;
+  generated_at: string;
 }
 
 export async function upsertArticle(db: D1Database, article: NormalizedArticle): Promise<void> {
@@ -439,6 +460,106 @@ export async function listRecentCrawlRuns(db: D1Database, limit = 20): Promise<C
     fetchedCount: row.fetched_count,
     createdAt: row.created_at
   }));
+}
+
+export async function listLatestFeedHealth(db: D1Database): Promise<
+  Array<{
+    sourceId: string;
+    sourceName: string;
+    enabled: boolean;
+    status: "success" | "error" | "unknown";
+    message: string;
+    fetchedCount: number;
+    checkedAt: string | null;
+  }>
+> {
+  const { results } = await db
+    .prepare(
+      `SELECT
+         ns.id AS source_id,
+         ns.name AS source_name,
+         ns.enabled AS enabled,
+         cr.status AS status,
+         cr.message AS message,
+         cr.fetched_count AS fetched_count,
+         cr.created_at AS created_at
+       FROM news_sources ns
+       LEFT JOIN crawl_runs cr
+         ON cr.id = (
+           SELECT id FROM crawl_runs
+           WHERE source_id = ns.id
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1
+         )
+       ORDER BY ns.enabled DESC, ns.name ASC`
+    )
+    .all<FeedHealthRow>();
+  return results.map((row) => ({
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    enabled: row.enabled === 1,
+    status: row.status ?? "unknown",
+    message: row.message ?? "",
+    fetchedCount: row.fetched_count ?? 0,
+    checkedAt: row.created_at ?? null
+  }));
+}
+
+export async function insertSystemStatusSnapshot(
+  db: D1Database,
+  snapshot: {
+    reportDate: string;
+    feedOkCount: number;
+    feedErrorCount: number;
+    feedTotalCount: number;
+    aiOk: boolean;
+    articleCount: number;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO system_status_snapshots
+        (report_date, feed_ok_count, feed_error_count, feed_total_count, ai_ok, article_count)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+    )
+    .bind(
+      snapshot.reportDate,
+      snapshot.feedOkCount,
+      snapshot.feedErrorCount,
+      snapshot.feedTotalCount,
+      snapshot.aiOk ? 1 : 0,
+      snapshot.articleCount
+    )
+    .run();
+}
+
+export async function getLatestSystemStatusSnapshot(db: D1Database): Promise<{
+  reportDate: string;
+  feedOkCount: number;
+  feedErrorCount: number;
+  feedTotalCount: number;
+  aiOk: boolean;
+  articleCount: number;
+  generatedAt: string;
+} | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, report_date, feed_ok_count, feed_error_count, feed_total_count, ai_ok, article_count, generated_at
+       FROM system_status_snapshots
+       ORDER BY generated_at DESC, id DESC
+       LIMIT 1`
+    )
+    .first<SystemStatusSnapshotRow>();
+  if (!row) return null;
+  return {
+    reportDate: row.report_date,
+    feedOkCount: row.feed_ok_count,
+    feedErrorCount: row.feed_error_count,
+    feedTotalCount: row.feed_total_count,
+    aiOk: row.ai_ok === 1,
+    articleCount: row.article_count,
+    generatedAt: row.generated_at
+  };
 }
 
 export async function upsertMediaItem(db: D1Database, item: MediaItemRecord): Promise<void> {

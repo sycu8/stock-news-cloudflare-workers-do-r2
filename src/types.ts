@@ -11,6 +11,7 @@ export interface Env {
   WORKERS_AI_MODEL_SUMMARY?: string;
   ADMIN_REFRESH_TOKEN: string;
   TZ?: string;
+  WORKER_VERSION?: string;
 }
 
 export type NewsSourceType = "rss" | "html_list";
@@ -45,6 +46,10 @@ export interface StoredArticle extends NormalizedArticle {
   id: number;
   summaryVi: string | null;
   imageUrl?: string | null;
+  sourceCount?: number;
+  sourceNames?: string[];
+  confirmationLevel?: "confirmed" | "single" | "breaking";
+  confirmationLabel?: string;
 }
 
 export interface DailyReport {

@@ -73,6 +73,8 @@ export function renderHomePage({
               : escapeHtml(article.title)
           }</h3>
           ${renderSentimentBadge((article as StoredArticle & { sentimentLabel?: string }).sentimentLabel ?? classifySentimentText(`${article.title} ${article.summaryVi ?? ""} ${article.snippet}`).label)}
+          ${renderConfirmationBadge(article)}
+          ${renderMergedSources(article)}
           <p class="summary">${escapeHtml(article.summaryVi ?? article.snippet)}</p>
           ${
             article.contentLimited
@@ -103,6 +105,8 @@ export function renderHomePage({
               : escapeHtml(article.title)
           }</h3>
           ${renderSentimentBadge((article as StoredArticle & { sentimentLabel?: string }).sentimentLabel ?? classifySentimentText(`${article.title} ${article.summaryVi ?? ""} ${article.snippet}`).label)}
+          ${renderConfirmationBadge(article)}
+          ${renderMergedSources(article)}
           <p class="summary">${escapeHtml(article.summaryVi ?? article.snippet)}</p>
           ${
             article.contentLimited
@@ -453,6 +457,11 @@ export function renderHomePage({
       .sentimentBadge.pos{ color:#066649; background: color-mix(in srgb, #12b76a 18%, transparent); border:1px solid color-mix(in srgb, #12b76a 45%, transparent); }
       .sentimentBadge.neu{ color:#475467; background: color-mix(in srgb, #98a2b3 20%, transparent); border:1px solid color-mix(in srgb, #98a2b3 45%, transparent); }
       .sentimentBadge.neg{ color:#b42318; background: color-mix(in srgb, #f04438 16%, transparent); border:1px solid color-mix(in srgb, #f04438 45%, transparent); }
+      .confirmBadge{ display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; font-size:.78rem; font-weight:700; margin:0 0 8px 6px; border:1px solid var(--border); }
+      .confirmBadge.confirmed{ color:#166534; background:#dcfce7; border-color:#86efac; }
+      .confirmBadge.single{ color:#92400e; background:#fef3c7; border-color:#fcd34d; }
+      .confirmBadge.breaking{ color:#991b1b; background:#fee2e2; border-color:#fca5a5; }
+      .mergeMeta{ margin-top:-2px; color: var(--muted); font-size:.84rem; }
       .pinRow { display:flex; align-items:center; justify-content: space-between; gap: 10px; }
       .pinBadge { display:inline-flex; align-items:center; padding: 4px 10px; border-radius: 999px; font-size: .85rem; font-weight: 700; background: color-mix(in srgb, var(--warning) 22%, transparent); border:1px solid color-mix(in srgb, var(--warning) 55%, transparent); }
       .card h3 { margin: 8px 0; font-size: 1.02rem; line-height: 1.35; }
@@ -613,6 +622,7 @@ export function renderHomePage({
           <a class="topNavLink" href="#tin-van">Tin vắn</a>
           <a class="topNavLink" href="#du-bao">Dự báo</a>
           <a class="topNavLink" href="#tin-tuc">Tin tức</a>
+          <a class="topNavLink" href="/status">Status</a>
         </nav>
       </div>
       <main id="main-content" role="main">
@@ -864,6 +874,21 @@ function renderSentimentBadge(label: string): string {
   if (label === "positive") return '<span class="sentimentBadge pos">Tích cực</span>';
   if (label === "negative") return '<span class="sentimentBadge neg">Tiêu cực</span>';
   return '<span class="sentimentBadge neu">Trung tính</span>';
+}
+
+function renderConfirmationBadge(article: StoredArticle): string {
+  const level = article.confirmationLevel;
+  const label = article.confirmationLabel;
+  if (!level || !label) return "";
+  if (level === "confirmed") return `<span class="confirmBadge confirmed">✅ ${escapeHtml(label)}</span>`;
+  if (level === "single") return `<span class="confirmBadge single">⚠️ ${escapeHtml(label)}</span>`;
+  return `<span class="confirmBadge breaking">🔥 ${escapeHtml(label)}</span>`;
+}
+
+function renderMergedSources(article: StoredArticle): string {
+  const count = article.sourceCount ?? 1;
+  if (count <= 1) return "";
+  return `<p class="mergeMeta">${escapeHtml(article.title)} reported by ${count} sources</p>`;
 }
 
 function historySentimentClass(score: number): string {

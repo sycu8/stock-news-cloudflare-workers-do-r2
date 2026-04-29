@@ -5,6 +5,8 @@ import {
   getArticlesByDatePaged,
   getDailyReport,
   getTodayDateKey,
+  listLatestFeedHealth,
+  insertSystemStatusSnapshot,
   setArticleSummary,
   setArticleImageUrl,
   upsertArticle,
@@ -18,8 +20,10 @@ import { summarizeArticle, summarizeArticleFromSource, summarizeDailyOverview } 
 import { fetchAndExtractSource } from "./source-extract";
 import { ensureGeneratedThumbnail } from "./image-gen";
 import { analyzeSentimentForArticles } from "./sentiment";
+import { collapseDuplicateNews } from "./news-cluster";
 
 const DAILY_CACHE_KEY = "today-report-cache";
+const LAST_GOOD_FEED_KEY = "today-report-last-good";
 const REPORT_HISTORY_PREFIX = "report-history";
 
 export interface RefreshResult {
@@ -121,6 +125,28 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
     }),
     { expirationTtl: 60 * 60 * 24 }
   );
+  await env.CACHE.put(
+    LAST_GOOD_FEED_KEY,
+    JSON.stringify({
+      reportDate,
+      report,
+      articles: finalizedArticles,
+      mediaItems,
+      cachedAt: new Date().toISOString()
+    }),
+    { expirationTtl: 60 * 60 * 24 * 3 }
+  );
+  const feedHealth = await listLatestFeedHealth(env.DB);
+  const feedOkCount = feedHealth.filter((x) => x.status === "success").length;
+  const feedErrorCount = feedHealth.filter((x) => x.status === "error").length;
+  await insertSystemStatusSnapshot(env.DB, {
+    reportDate,
+    feedOkCount,
+    feedErrorCount,
+    feedTotalCount: feedHealth.length,
+    aiOk: Boolean(env.AI || env.OPENAI_API_KEY),
+    articleCount: finalizedArticles.length
+  });
 
   return {
     reportDate,
@@ -169,15 +195,20 @@ export async function getFeedByDate(
                 String(a.sourceName).toLowerCase() === normalizedSource
             )
           : typed.articles;
-        const sliced = filtered.slice(offset, offset + pageSize);
+        const deduped = collapseDuplicateNews(filtered);
+        const staleMinutes = typed.cachedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(typed.cachedAt)) / 60000)) : 0;
+        const staleSuffix = staleMinutes > 0 ? ` Latest available update: ${staleMinutes} mins ago.` : "";
         return {
           reportDate,
-          report: typed.report,
-          articles: sliced,
+          report: {
+            ...typed.report,
+            overviewVi: `${typed.report.overviewVi}${staleSuffix}`
+          },
+          articles: deduped.slice(offset, offset + pageSize),
           mediaItems: Array.isArray(typed.mediaItems) ? typed.mediaItems : [],
           marketSnapshot,
           reportHistory,
-          total: filtered.length,
+          total: deduped.length,
           cacheHit: true,
           cachedAt: typed.cachedAt ?? null
         };
@@ -200,6 +231,38 @@ export async function getFeedByDate(
       getReportHistory(env, reportDate)
   ]);
 
+  const dedupedPaged = collapseDuplicateNews(paged.articles);
+  const hasFreshData = dedupedPaged.length > 0;
+  if (!hasFreshData && isToday) {
+    const fallback = await env.CACHE.get(LAST_GOOD_FEED_KEY, "json");
+    if (fallback && typeof fallback === "object") {
+      const typed = fallback as {
+        reportDate?: string;
+        report?: DailyReport;
+        articles?: StoredArticle[];
+        mediaItems?: import("../types").MediaItemRecord[];
+        cachedAt?: string;
+      };
+      if (typed.report && Array.isArray(typed.articles)) {
+        const merged = collapseDuplicateNews(typed.articles);
+        const staleMinutes = typed.cachedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(typed.cachedAt)) / 60000)) : 0;
+        return {
+          reportDate,
+          report: {
+            ...typed.report,
+            overviewVi: `${typed.report.overviewVi} Latest available update: ${staleMinutes} mins ago.`
+          },
+          articles: merged.slice(offset, offset + pageSize),
+          mediaItems: Array.isArray(typed.mediaItems) ? typed.mediaItems : [],
+          marketSnapshot,
+          reportHistory,
+          total: merged.length,
+          cacheHit: true,
+          cachedAt: typed.cachedAt ?? null
+        };
+      }
+    }
+  }
   return {
     reportDate,
     report:
@@ -211,11 +274,11 @@ export async function getFeedByDate(
         assumptionsVi: "",
         articleCount: paged.total
       } satisfies DailyReport),
-    articles: paged.articles,
+    articles: dedupedPaged,
     mediaItems,
     marketSnapshot,
     reportHistory,
-    total: paged.total,
+    total: dedupedPaged.length,
     cacheHit: false,
     cachedAt: null
   };

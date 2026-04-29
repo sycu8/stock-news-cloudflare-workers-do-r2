@@ -6,6 +6,8 @@ import {
   ensureDefaultSources,
   getArticleByUrl,
   getTodayDateKey,
+  getLatestSystemStatusSnapshot,
+  listLatestFeedHealth,
   listRecentCrawlRuns,
   listSources,
   toggleSource
@@ -15,6 +17,7 @@ import { getFeedByDate, getTodayFeed, refreshDailyNews } from "./services/refres
 import type { Env, NewsSourceRecord, NewsSourceType } from "./types";
 import { formatVietnamDateDisplay } from "./utils/date";
 import { renderArticleDetailPage, renderHomePage } from "./ui/render";
+import { renderStatusPage } from "./ui/status";
 import { generateTodayRssXml } from "./ui/rss";
 import { renderAdminSourcesPage } from "./ui/admin";
 import { buildChartsForToday } from "./ui/charts";
@@ -347,6 +350,36 @@ app.get("/health", (c) =>
     }
   )
 );
+
+app.get("/status", async (c) => {
+  try {
+    const [feedHealth, snapshot] = await Promise.all([listLatestFeedHealth(c.env.DB), getLatestSystemStatusSnapshot(c.env.DB)]);
+    const latestUpdateAt =
+      feedHealth
+        .map((x) => x.checkedAt)
+        .filter((x): x is string => Boolean(x))
+        .sort((a, b) => b.localeCompare(a))[0] ?? null;
+    const avgUpdateMinutes = snapshot ? 5 : null;
+    return c.html(
+      renderStatusPage({
+        nowIso: new Date().toISOString(),
+        workerVersion: c.env.WORKER_VERSION ?? "unknown",
+        latestUpdateAt,
+        avgUpdateMinutes,
+        aiStatus: snapshot?.aiOk ? "ok" : "degraded",
+        feedHealth
+      }),
+      200,
+      {
+        "cache-control": "public, s-maxage=60, stale-while-revalidate=120, stale-if-error=600",
+        "content-language": "vi"
+      }
+    );
+  } catch (error) {
+    console.error("GET /status failed:", error);
+    return c.text("Status unavailable", 500);
+  }
+});
 
 app.post("/admin/refresh", async (c) => {
   if (!isAdminAuthorized(c)) {
