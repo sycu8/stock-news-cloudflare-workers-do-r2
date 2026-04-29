@@ -26,6 +26,11 @@ A production-ready Vietnam stock market news website running on Cloudflare Worke
   - logo + favicon,
   - Google Font Montserrat,
   - mobile navigation, back-to-top, and client auto-refresh every 5 minutes when data changes.
+- UX & reliability (recent):
+  - Sticky nav with logo shortlink to `/` (refresh home); header logo also links home.
+  - **Tin vắn**: tab **Trong nước** (default) vs **Nước ngoài**; international finance sources (e.g. CNBC) appear under the foreign tab; sentiment badges on brief lines.
+  - Image proxy **`/img`** with Cloudflare edge transforms (`cf.image`) for external URLs; `onerror` fallback to brand logo.
+  - Performance & a11y baseline: skip link, landmarks, cache headers on HTML/JSON/RSS, optional RUM `POST /api/rum`, CI workflow (Lighthouse + Pa11y smoke tests).
 
 ## Architecture
 
@@ -41,18 +46,33 @@ A production-ready Vietnam stock market news website running on Cloudflare Worke
 
 ## Image delivery (Cloudflare)
 
-External article images are served through `GET /img?u=<encoded-url>&w=<px>&q=<1-100>` on the Worker. The handler uses **`fetch` with `cf.image`** (Cloudflare image transforms on the edge) to resize, strip heavy metadata, and deliver efficient responses, with a plain fetch fallback if transforms are unavailable.
+### Remote RSS / article thumbnails (this repo)
 
-Requirements on the Cloudflare side:
+External HTTPS image URLs are rewritten to same-origin proxy URLs. The Worker implements:
 
-- Zone **Image Resizing / Images** capability enabled for this hostname (your Images subscription applies here).
-- **`wrangler dev`** may not apply image transforms the same way as production edge.
+`GET /img?u=<url-encoded-https-url>&w=<16-4096>&q=<40-100>`
 
-For assets you **upload to Cloudflare Images** (dashboard/API), prefer delivery URLs:
+- **Transform path:** `src/services/cf-image-fetch.ts` calls `fetch(upstream, { cf: { image: { width, fit: "scale-down", quality, metadata: "none" } } })`.
+- **Fallback:** if that response is not a valid image, the Worker fetches the upstream without `cf.image`.
+- **Responsive images:** `srcset` uses multiple `w` values (e.g. 320, 640, 960, 1200) on `/img` for the same `u`.
+- **Same-origin assets** under `/assets/*` are **not** passed through `/img` in the markup; they are served from R2 as before.
+
+**Account / zone requirements**
+
+- Image transforms on `fetch` require your Cloudflare account/zone to have **Image Resizing** (or equivalent Images entitlement) enabled for traffic through this Worker—this is what your **Cloudflare Images** subscription typically unlocks alongside library hosting.
+- Local `wrangler dev` may not mirror production transform behaviour; verify on a deployed `*.workers.dev` or custom hostname.
+
+### Cloudflare Images library (`imagedelivery.net`)
+
+For assets you **upload** via the Cloudflare Images dashboard or API, use delivery URLs:
 
 `https://imagedelivery.net/<account_hash>/<image_id>/<variant_name>`
 
-Those can be stored in D1/R2 metadata and used directly without `/img`. Generated or R2-hosted files under `/assets/*` are served from R2 unless you migrate them to Images.
+Store `image_id` + variant in D1 if you migrate logos/thumbnails off R2. Those URLs can be used **directly** in `<img src>` without `/img`.
+
+### Product roadmap (terminal vision)
+
+Longer-term direction for **stocknews.orangecloud.vn** is documented in the assistant design note (AI terminal, watchlists, briefings, alerts). Implementation should be phased; data-heavy features (volume, foreign flow) need explicit licensed feeds before UI promises go live.
 
 ## Main Project Structure
 
@@ -136,10 +156,14 @@ Current key bindings in `wrangler.toml`:
 
 ## Key Routes and API
 
-- `GET /`: homepage dashboard.
-- `GET /article?url=<encoded_url>`: article detail page.
-- `GET /api/news/today`: JSON feed for current day (supports filters).
-- `GET /rss/today`: RSS 2.0 feed for today.
+- `GET /`: homepage dashboard (SSR); query params include `source`, `sentiment`, `date`, `q`, `page` (bounded).
+- `GET /search`: redirects to `/` preserving query string (alias for “ticker/search” style URLs).
+- `GET /article?u=<encoded_url>`: article detail page (`d` optional for consistency with redirects).
+- `GET /img?u=<encoded_https_url>&w=<px>&q=<quality>`: optimized remote image proxy (see Image delivery).
+- `GET /api/news/today`: JSON feed for current day (`date`, `source`, `page`, `pageSize` bounded).
+- `POST /api/rum`: accepts JSON beacon from the homepage (structured logs); used for metrics experiments.
+- `GET /rss/today`: RSS 2.0 feed for today (cache-friendly headers).
+- `GET /health`: JSON liveness probe for uptime monitors.
 - `POST /admin/refresh`: manually trigger refresh (`x-admin-token` header).
 - `GET /admin/sources?token=<ADMIN_REFRESH_TOKEN>`: source management UI.
 - `POST /admin/sources`: add source (`rss` or `html_list`).
@@ -164,7 +188,29 @@ Current key bindings in `wrangler.toml`:
 4. Smoke test:
    - `/`
    - `/api/news/today`
+   - `/img?u=<encoded-https-url-of-a-tiny-test-image>&w=64&q=80` (expect `image/*` response)
+   - `/health`
+   - `/rss/today`
    - `/admin/sources?token=...`
+
+## CI (GitHub Actions)
+
+Workflow `.github/workflows/perf-a11y-ci.yml` runs on push/PR to `main`: installs deps, boots `wrangler dev` locally, runs smoke curls, Lighthouse CI (`.lighthouserc.json`), and Pa11y CI (`.pa11yci.json`).
+
+Scripts:
+
+- `npm run ci:lighthouse`
+- `npm run ci:a11y`
+
+## Changelog (high level)
+
+| Area | Summary |
+|------|---------|
+| Images | `/img` + `cf.image` transforms; responsive srcset; README contract for Images library URLs |
+| Tin vắn | Domestic / foreign tabs; CNBC-class sources in foreign tab where topic matches |
+| Navigation | Logo links to `/`; sticky nav includes logo button |
+| Performance | Cached HTML/API/RSS headers; bounded query params |
+| Repo | Lighthouse + Pa11y gates, RUM endpoint hooks in UI |
 
 ## Business Notes
 
