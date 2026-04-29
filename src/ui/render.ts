@@ -946,15 +946,23 @@ function renderResponsiveImage(
 }
 
 function buildCloudflareSrcset(src: string): string {
-  if (/^https?:\/\//i.test(src)) return "";
-  if (!src.startsWith("/")) return "";
+  /** Remote HTTPS images: optimize via Workers /img + Cloudflare image transforms on fetch. Same-origin paths: no responsive srcset (avoid invalid /cdn-cgi paths). */
+  if (!/^https?:\/\//i.test(src)) return "";
   const widths = [320, 640, 960, 1200];
-  return widths.map((w) => `/cdn-cgi/image/format=auto,quality=75,width=${w}/${src} ${w}w`).join(", ");
+  return widths.map((w) => `/img?${imgProxyQuery(src, { w, q: 82 })} ${w}w`).join(", ");
+}
+
+function imgProxyQuery(u: string, opts: { w: number; q: number }): string {
+  const p = new URLSearchParams();
+  p.set("u", u);
+  p.set("w", String(opts.w));
+  p.set("q", String(opts.q));
+  return p.toString();
 }
 
 function proxiedImageUrl(src: string): string {
   if (!/^https?:\/\//i.test(src)) return src;
-  return `/img?u=${encodeURIComponent(src)}`;
+  return `/img?${imgProxyQuery(src, { w: 960, q: 82 })}`;
 }
 
 function isInternationalSource(item: MediaItemRecord): boolean {

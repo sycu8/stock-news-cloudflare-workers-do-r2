@@ -23,6 +23,7 @@ import { getViewsMap, incrementView } from "./services/views";
 import { LOGO_ASSET_KEY } from "./ui/brand";
 import { classifySentimentText } from "./services/sentiment";
 import { fetchAndExtractSource } from "./services/source-extract";
+import { fetchOptimizedRemoteImage } from "./services/cf-image-fetch";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -209,26 +210,24 @@ app.get("/img", async (c) => {
   try {
     const target = new URL(raw);
     if (!/^https?:$/.test(target.protocol)) return c.text("Invalid URL", 400);
-    const resp = await fetch(target.toString(), {
-      headers: {
-        "User-Agent": "vn-market-daily-worker/1.0 (+Cloudflare Worker)",
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
-      }
-    });
-    if (!resp.ok) return c.redirect(LOGO_ASSET_KEY.startsWith("brand/") ? `/assets/${LOGO_ASSET_KEY}` : LOGO_ASSET_KEY, 302);
-    const contentType = resp.headers.get("content-type") ?? "";
-    if (!contentType.toLowerCase().startsWith("image/")) {
-      return c.redirect(LOGO_ASSET_KEY.startsWith("brand/") ? `/assets/${LOGO_ASSET_KEY}` : LOGO_ASSET_KEY, 302);
+    const width = clampInt(c.req.query("w"), 1200, 16, 4096);
+    const quality = clampInt(c.req.query("q"), 82, 40, 100);
+    const resp = await fetchOptimizedRemoteImage(target.toString(), { width, quality });
+
+    const contentType = resp.headers.get("content-type") ?? "application/octet-stream";
+    if (!resp.ok || !contentType.toLowerCase().startsWith("image/")) {
+      return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
     }
     return new Response(resp.body, {
-      status: 200,
+      status: resp.status,
       headers: {
         "content-type": contentType,
+        vary: resp.headers.get("vary") ?? "Accept",
         "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800"
       }
     });
   } catch {
-    return c.redirect(LOGO_ASSET_KEY.startsWith("brand/") ? `/assets/${LOGO_ASSET_KEY}` : LOGO_ASSET_KEY, 302);
+    return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
   }
 });
 

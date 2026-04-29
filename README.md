@@ -39,6 +39,21 @@ A production-ready Vietnam stock market news website running on Cloudflare Worke
   - Workers AI (`env.AI`) for summarization/image generation
   - OpenAI as fallback when `OPENAI_API_KEY` is provided
 
+## Image delivery (Cloudflare)
+
+External article images are served through `GET /img?u=<encoded-url>&w=<px>&q=<1-100>` on the Worker. The handler uses **`fetch` with `cf.image`** (Cloudflare image transforms on the edge) to resize, strip heavy metadata, and deliver efficient responses, with a plain fetch fallback if transforms are unavailable.
+
+Requirements on the Cloudflare side:
+
+- Zone **Image Resizing / Images** capability enabled for this hostname (your Images subscription applies here).
+- **`wrangler dev`** may not apply image transforms the same way as production edge.
+
+For assets you **upload to Cloudflare Images** (dashboard/API), prefer delivery URLs:
+
+`https://imagedelivery.net/<account_hash>/<image_id>/<variant_name>`
+
+Those can be stored in D1/R2 metadata and used directly without `/img`. Generated or R2-hosted files under `/assets/*` are served from R2 unless you migrate them to Images.
+
 ## Main Project Structure
 
 ```text
@@ -58,6 +73,7 @@ A production-ready Vietnam stock market news website running on Cloudflare Worke
 │  │  ├─ image-gen.ts
 │  │  ├─ daily-media.ts
 │  │  ├─ cafef-market.ts
+│  │  ├─ cf-image-fetch.ts
 │  │  └─ sentiment.ts
 │  ├─ ui/
 │  │  ├─ render.ts
