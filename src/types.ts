@@ -12,6 +12,12 @@ export interface Env {
   ADMIN_REFRESH_TOKEN: string;
   TZ?: string;
   WORKER_VERSION?: string;
+  /** Telegram Bot API token (@BotFather); use `wrangler secret put TELEGRAM_BOT_TOKEN` */
+  TELEGRAM_BOT_TOKEN?: string;
+  /** Bot username without @; public, for https://t.me/<name> links */
+  TELEGRAM_BOT_USERNAME?: string;
+  /** Must match Telegram setWebhook secret_token; header X-Telegram-Bot-Api-Secret-Token */
+  TELEGRAM_WEBHOOK_SECRET?: string;
 }
 
 export type NewsSourceType = "rss" | "html_list";

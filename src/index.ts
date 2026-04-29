@@ -17,7 +17,15 @@ import { getFeedByDate, getTodayFeed, refreshDailyNews } from "./services/refres
 import type { Env, NewsSourceRecord, NewsSourceType } from "./types";
 import { formatVietnamDateDisplay } from "./utils/date";
 import { renderArticleDetailPage, renderHomePage } from "./ui/render";
+import { renderNotifyPage } from "./ui/notify";
 import { renderStatusPage } from "./ui/status";
+import {
+  broadcastTelegramMessage,
+  getTelegramSubscriberCount,
+  handleTelegramWebhookUpdate,
+  isTelegramNotifyConfigured,
+  verifyTelegramWebhookSecret
+} from "./services/telegram-bot";
 import { generateTodayRssXml } from "./ui/rss";
 import { renderAdminSourcesPage } from "./ui/admin";
 import { buildChartsForToday } from "./ui/charts";
@@ -350,6 +358,86 @@ app.get("/health", (c) =>
     }
   )
 );
+
+app.get("/notify", async (c) => {
+  const url = new URL(c.req.url);
+  const configured = isTelegramNotifyConfigured(c.env);
+  const subscriberCount = await getTelegramSubscriberCount(c.env);
+  return c.html(
+    renderNotifyPage({
+      botUsername: c.env.TELEGRAM_BOT_USERNAME?.trim() ?? null,
+      configured,
+      subscriberCount,
+      baseUrl: `${url.origin}`
+    }),
+    200,
+    {
+      "cache-control": "public, max-age=120",
+      "content-language": "vi"
+    }
+  );
+});
+
+app.get("/api/notify/status", async (c) => {
+  try {
+    const configured = isTelegramNotifyConfigured(c.env);
+    const subscriberCount = await getTelegramSubscriberCount(c.env);
+    return c.json(
+      {
+        telegramConfigured: configured,
+        subscriberCount,
+        webhookPath: "/webhooks/telegram"
+      },
+      200,
+      { "cache-control": "public, s-maxage=60" }
+    );
+  } catch (e) {
+    console.error("GET /api/notify/status failed:", e);
+    return c.json({ error: "status failed" }, 500);
+  }
+});
+
+app.post("/webhooks/telegram", async (c) => {
+  if (!c.env.TELEGRAM_WEBHOOK_SECRET?.trim()) {
+    return c.text("Webhook secret not configured", 503);
+  }
+  if (!verifyTelegramWebhookSecret(c.env, c.req.header("X-Telegram-Bot-Api-Secret-Token"))) {
+    return c.text("Unauthorized", 401);
+  }
+  if (!c.env.TELEGRAM_BOT_TOKEN?.trim()) {
+    return c.text("Bot token not configured", 503);
+  }
+  try {
+    const body = (await c.req.json()) as unknown;
+    await handleTelegramWebhookUpdate(c.env, body);
+    return c.json({ ok: true });
+  } catch (error) {
+    console.error("POST /webhooks/telegram failed:", error);
+    return c.json({ ok: false }, 500);
+  }
+});
+
+app.post("/admin/notify", async (c) => {
+  if (!isAdminAuthorized(c)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  if (!c.env.TELEGRAM_BOT_TOKEN?.trim()) {
+    return c.json({ error: "TELEGRAM_BOT_TOKEN not set" }, 503);
+  }
+  try {
+    const payload = await c.req.json();
+    const raw = typeof payload?.message === "string" ? payload.message : String(payload?.message ?? "");
+    const message = raw.trim().slice(0, 4000);
+    if (!message) {
+      return c.json({ error: "message required" }, 400);
+    }
+    const result = await broadcastTelegramMessage(c.env, message);
+    return c.json({ ok: true, sent: result.ok, failed: result.fail });
+  } catch (error) {
+    console.error("POST /admin/notify failed:", error);
+    return c.json({ error: "broadcast failed" }, 500);
+  }
+});
 
 app.get("/status", async (c) => {
   try {

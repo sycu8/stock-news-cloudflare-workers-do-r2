@@ -26,6 +26,8 @@ preview_bucket_name = "vn-market-assets-preview"
 # Set this to an OpenAI model you have access to (e.g. "gpt-5.5").
 OPENAI_MODEL = "gpt-5.5"
 TZ = "Asia/Ho_Chi_Minh"
+# Optional: Telegram bot @handle without @ (for /notify deep links). Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET.
+TELEGRAM_BOT_USERNAME = ""
 
 [triggers]
 crons = ["*/5 * * * *"]

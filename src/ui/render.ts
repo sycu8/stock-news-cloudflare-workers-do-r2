@@ -228,24 +228,21 @@ export function renderHomePage({
   const marketOverviewChips = (marketSnapshot?.overviewItems ?? [])
     .map((item) => `<span class="chip chipStatic">${escapeHtml(item)}</span>`)
     .join("");
-  const marketSections = (marketSnapshot?.sections ?? [])
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join("");
-  const marketQuickLinks = (marketSnapshot?.quickLinks ?? [])
+  const curatedCafeFLinks = buildCuratedCafeFLinks(marketSnapshot);
+  const curatedCafeFHtml = curatedCafeFLinks
     .map(
       (item) =>
-        `<a class="topNavLink" href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.label)}</a>`
-    )
-    .join("");
-  const marketToolLinks = (marketSnapshot?.toolLinks ?? [])
-    .map(
-      (item) =>
-        `<a class="topNavLink" href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.label)}</a>`
+        `<a class="cafefLinkCard" href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">
+          <span class="cafefLinkTitle">${escapeHtml(item.label)}</span>
+          <span class="cafefLinkMeta">Mở dữ liệu</span>
+        </a>`
     )
     .join("");
   const marketNotes = (marketSnapshot?.notes ?? [])
     .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join("");
+  const latestDataStamp = marketSnapshot?.fetchedAt ? formatVietnamDateTimeDisplay(marketSnapshot.fetchedAt) : null;
+  const latestMarketVisual = mediaItems.find((item) => Boolean(item.imageUrl)) ?? null;
   const updatedLabel = updatedAt ? formatVietnamTimeDisplay(updatedAt) : null;
   const updatedFullLabel = updatedAt ? formatVietnamDateTimeDisplay(updatedAt) : null;
   const resultsCount = (pinnedArticles?.length ?? 0) + articles.length;
@@ -534,6 +531,18 @@ export function renderHomePage({
       .marketBlock h3 { margin: 0 0 10px; font-size: 1rem; }
       .marketLinks { display:flex; gap:8px; flex-wrap: wrap; }
       .marketList { margin: 0; padding-left: 18px; display:grid; gap:6px; }
+      .cafefGrid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
+      .cafefLinkCard{
+        display:flex; flex-direction:column; gap:6px; padding:12px;
+        border-radius:12px; border:1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 90%, transparent);
+        color: var(--text); text-decoration:none;
+      }
+      .cafefLinkCard:hover{ border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); text-decoration:none; }
+      .cafefLinkTitle{ font-weight:700; line-height:1.35; }
+      .cafefLinkMeta{ font-size:.82rem; color: var(--muted); }
+      .marketMini{ display:grid; grid-template-columns: 96px 1fr; gap:10px; align-items:center; }
+      .marketMini img{ width:96px; height:64px; object-fit:cover; border-radius:10px; border:1px solid var(--border); }
       .footer { margin: 18px 0 8px; padding: 18px 16px; border-radius: 16px; background: linear-gradient(135deg, #0f172a 0%, #111827 100%); color:#fff; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap: wrap; }
       .footerBrand { display:flex; align-items:center; gap:12px; }
       .footerLogo { width:52px; height:52px; border-radius: 12px; object-fit: cover; background:#fff; padding: 4px; }
@@ -560,6 +569,7 @@ export function renderHomePage({
         .historyDelta{ grid-area: delta; justify-self: start; }
         .cardThumb{ max-height: 160px; }
         .mediaThumb{ max-height: 145px; }
+        .cafefGrid{ grid-template-columns: 1fr; }
         .filter { align-items: stretch; }
         .filter label { width: 100%; }
         .filter select, .filter button { width: 100%; }
@@ -622,10 +632,27 @@ export function renderHomePage({
           <a class="topNavLink" href="#tin-van">Tin vắn</a>
           <a class="topNavLink" href="#du-bao">Dự báo</a>
           <a class="topNavLink" href="#tin-tuc">Tin tức</a>
+          <a class="topNavLink" href="/notify">Thông báo</a>
           <a class="topNavLink" href="/status">Status</a>
         </nav>
       </div>
       <main id="main-content" role="main">
+      <section class="panel">
+        <h2 id="overviewTitle">Tổng quan thị trường trong ngày</h2>
+        <div id="overviewText" class="overviewReadable">${renderReadableText(report.overviewVi)}</div>
+        ${
+          reportHistory.length > 0
+            ? `<h3 style="margin:14px 0 8px;">Lịch sử cập nhật trong ngày</h3><div class="historySmart"><div class="historyTabs">${historyTabButtons}</div><div>${historyTabPanels}</div></div>`
+            : ""
+        }
+      </section>
+
+      <section class="panel">
+        <h2>Từ khóa đang hot</h2>
+        <p class="disclaimer">Tổng hợp từ tiêu đề/tóm tắt hôm nay (tự động, có thể không hoàn hảo).</p>
+        <div class="chips">${hotKeywordChips || "<span class=\"muted\">Chưa đủ dữ liệu để tổng hợp từ khóa.</span>"}</div>
+      </section>
+
       <form class="filter panel" method="GET" action="/" aria-label="Lọc và tìm kiếm tin tức">
         <h2 style="margin:0 0 10px;">Tìm kiếm và lọc tin</h2>
         <label for="source" id="filterLabel">Lọc theo nguồn:</label>
@@ -670,32 +697,38 @@ export function renderHomePage({
       </div>
       <section class="panel" id="du-lieu">
         <h2>Dữ liệu thị trường từ CafeF</h2>
-        <p class="disclaimer">Tự động crawl từ trang dữ liệu thị trường của CafeF và hiển thị lại theo giao diện riêng của website. Nguồn gốc: <a href="${escapeAttribute(
+        <p class="disclaimer">4 link chính, ngắn gọn và dễ theo dõi. Nguồn: <a href="${escapeAttribute(
           marketSnapshot?.sourceUrl ?? "https://cafef.vn/du-lieu.chn"
         )}" target="_blank" rel="noopener noreferrer">CafeF Dữ liệu</a>.</p>
         <div class="marketBoard">
           <div class="marketGrid">
             <section class="marketBlock">
-              <h3>Toàn cảnh thị trường</h3>
-              <p class="meta">${escapeHtml(marketSnapshot?.marketDateLabel ?? "Đang cập nhật")}</p>
-              <div class="chips">${marketOverviewChips || '<span class="muted">Chưa crawl được nhóm dữ liệu tổng quan.</span>'}</div>
+              <h3>Link dữ liệu chính</h3>
+              <div class="cafefGrid">${curatedCafeFHtml || '<span class="muted">Chưa có link dữ liệu.</span>'}</div>
+              <p class="meta" style="margin-top:10px;">Cập nhật mới nhất: ${escapeHtml(latestDataStamp ?? "Đang cập nhật")}</p>
             </section>
             <section class="marketBlock">
-              <h3>Tra cứu nhanh</h3>
-              <div class="marketLinks">${marketQuickLinks || '<span class="muted">Chưa có link tra cứu.</span>'}</div>
+              <h3>Tổng quan nhanh</h3>
+              <div class="chips">${marketOverviewChips || '<span class="muted">Đang đồng bộ dữ liệu.</span>'}</div>
+              ${
+                latestMarketVisual
+                  ? `<div class="marketMini" style="margin-top:10px;">
+                      ${renderResponsiveImage(latestMarketVisual.imageUrl || LOGO_URL, "", latestMarketVisual.title, {
+                        width: 320,
+                        height: 180,
+                        loading: "lazy",
+                        fetchpriority: "auto",
+                        sizes: "96px"
+                      })}
+                      <div>
+                        <p class="meta" style="margin:0 0 4px;">Mới nhất</p>
+                        <a href="${escapeAttribute(latestMarketVisual.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(latestMarketVisual.title)}</a>
+                      </div>
+                    </div>`
+                  : ""
+              }
+              <ul class="marketList" style="margin-top:8px;">${marketNotes || "<li>Dữ liệu chỉ mang tính tham khảo.</li>"}</ul>
             </section>
-            <section class="marketBlock">
-              <h3>Công cụ đầu tư</h3>
-              <div class="marketLinks">${marketToolLinks || '<span class="muted">Chưa có công cụ khả dụng.</span>'}</div>
-            </section>
-            <section class="marketBlock">
-              <h3>Nhóm dữ liệu được crawl</h3>
-              <ul class="marketList">${marketSections || "<li>Chưa crawl được danh mục dữ liệu.</li>"}</ul>
-            </section>
-          </div>
-          <div class="marketBlock" style="margin-top:12px;">
-            <h3>Ghi chú nguồn dữ liệu</h3>
-            <ul class="marketList">${marketNotes || "<li>Dữ liệu gốc được tổng hợp từ CafeF để phục vụ tham khảo.</li>"}</ul>
           </div>
         </div>
       </section>
@@ -722,21 +755,6 @@ export function renderHomePage({
         </div>
       </section>
 
-      <section class="panel">
-        <h2>Từ khóa đang hot</h2>
-        <p class="disclaimer">Tổng hợp từ tiêu đề/tóm tắt hôm nay (tự động, có thể không hoàn hảo).</p>
-        <div class="chips">${hotKeywordChips || "<span class=\"muted\">Chưa đủ dữ liệu để tổng hợp từ khóa.</span>"}</div>
-      </section>
-
-      <section class="panel">
-        <h2 id="overviewTitle">Tổng quan thị trường trong ngày</h2>
-        <div id="overviewText" class="overviewReadable">${renderReadableText(report.overviewVi)}</div>
-        ${
-          reportHistory.length > 0
-            ? `<h3 style="margin:14px 0 8px;">Lịch sử cập nhật trong ngày</h3><div class="historySmart"><div class="historyTabs">${historyTabButtons}</div><div>${historyTabPanels}</div></div>`
-            : ""
-        }
-      </section>
       <section class="panel warning" id="du-bao">
         <h2>Kịch bản thị trường (heuristic)</h2>
         ${chartsHtml || "<p class=\"muted\">Chưa đủ dữ liệu để hiển thị biểu đồ.</p>"}
@@ -1013,6 +1031,20 @@ function isDomesticFinanceBrief(item: MediaItemRecord): boolean {
   if (!isDomesticSource) return false;
   const text = `${item.title} ${item.summaryVi}`.toLowerCase();
   return /(chứng khoán|tài chính|ngân hàng|thị trường|vn-index|vnindex|hose|hnx|upcom|stock|finance|market)/i.test(text);
+}
+
+function buildCuratedCafeFLinks(snapshot: CafeFMarketSnapshot | null): Array<{ label: string; url: string }> {
+  const allLinks = [...(snapshot?.quickLinks ?? []), ...(snapshot?.toolLinks ?? [])];
+  const pick = (label: string, keywords: string[], fallback: string): { label: string; url: string } => {
+    const found = allLinks.find((x) => keywords.some((k) => x.label.toLowerCase().includes(k)));
+    return { label, url: found?.url ?? fallback };
+  };
+  return [
+    pick("Báo cáo phân tích", ["báo cáo", "phan tich"], "https://cafef.vn/du-lieu/phan-tich-bao-cao.chn"),
+    pick("Bảng giá trực tuyến", ["bảng giá", "liveboard"], "https://liveboard.cafef.vn/"),
+    pick("Công bố thông tin", ["công bố", "thông tin"], "https://cafef.vn/du-lieu/cong-bo-thong-tin.chn"),
+    pick("Dữ liệu doanh nghiệp", ["doanh nghiệp"], "https://cafef.vn/du-lieu/du-lieu-doanh-nghiep.chn")
+  ];
 }
 
 export function renderArticleDetailPage(params: {
