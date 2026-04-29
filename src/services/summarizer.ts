@@ -6,7 +6,8 @@ export async function summarizeArticle(article: StoredArticle, env: Env): Promis
     ? "Thông tin nguồn bị giới hạn. Chỉ tóm tắt từ tiêu đề/snippet."
     : "Có snippet.";
   const prompt = [
-    "Tóm tắt bản tin chứng khoán Việt Nam bằng tiếng Việt (có dấu), tối đa 2 câu, gọn và trung tính.",
+    "Tóm tắt tin chứng khoán Việt Nam: tiếng Việt có dấu, tối đa 2 câu, gọn và trung tính.",
+    "Không viết tiêu đề, lời mở đầu hay dòng kiểu 'Dưới đây là…' — chỉ nội dung tóm tắt.",
     "Không bổ sung sự kiện không có trong dữ liệu.",
     `Tiêu đề: ${article.title}`,
     `Nguồn: ${article.sourceName}`,
@@ -23,7 +24,8 @@ export async function summarizeArticleFromSource(
   env: Env
 ): Promise<string> {
   const prompt = [
-    "Tóm tắt bản tin chứng khoán Việt Nam bằng tiếng Việt (có dấu), tối đa 2 câu, gọn và trung tính.",
+    "Tóm tắt tin chứng khoán Việt Nam: tiếng Việt có dấu, tối đa 2 câu, gọn và trung tính.",
+    "Không viết tiêu đề, lời mở đầu hay dòng kiểu 'Dưới đây là…' — chỉ nội dung tóm tắt.",
     "Chỉ dựa trên nội dung nguồn được cung cấp. Không bịa thêm dữ liệu.",
     `Tiêu đề: ${article.title}`,
     `Nguồn: ${article.sourceName}`,
@@ -73,6 +75,24 @@ export async function summarizeDailyOverview(
   };
 }
 
+/** Remove model echoes of instruction preambles (keep only the actual summary). */
+function stripSummaryPreamble(text: string): string {
+  let t = text.trim();
+  const lines = t.split(/\r?\n/);
+  const dropFirst = (cond: (line: string) => boolean) => {
+    while (lines.length > 0 && cond(lines[0]!)) lines.shift();
+    t = lines.join("\n").trim();
+  };
+  dropFirst((line) => {
+    const s = line.trim();
+    if (/^dưới đây/i.test(s)) return true;
+    if (/^tóm tắt\s*:/i.test(s) && s.length < 120) return true;
+    if (/tóm tắt bản tin chứng khoán việt nam/i.test(s) && s.length < 180) return true;
+    return false;
+  });
+  return t;
+}
+
 async function runSummarizationPrompt(prompt: string, env: Env, fallback: string): Promise<string> {
   // Prefer Workers AI when available (no API key needed).
   if (env.AI) {
@@ -106,7 +126,7 @@ async function runSummarizationPrompt(prompt: string, env: Env, fallback: string
         (res as { result?: { response?: string } })?.result?.response ??
         (res as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content;
 
-      const trimmed = typeof text === "string" ? text.trim() : "";
+      const trimmed = typeof text === "string" ? stripSummaryPreamble(text) : "";
       if (trimmed) return truncate(trimmed, 1200);
     } catch (error) {
       console.error("Workers AI summarization failed:", error);
@@ -145,11 +165,13 @@ async function runSummarizationPrompt(prompt: string, env: Env, fallback: string
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    const text = data.choices?.[0]?.message?.content?.trim();
-    if (!text) {
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    if (!raw) {
       return fallback;
     }
-    return truncate(text, 1200);
+    const stripped = stripSummaryPreamble(raw);
+    if (!stripped) return fallback;
+    return truncate(stripped, 1200);
   } catch (error) {
     console.error("OpenAI summarization failed:", error);
     return fallback;
