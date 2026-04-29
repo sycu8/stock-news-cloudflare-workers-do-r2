@@ -212,7 +212,11 @@ app.get("/img", async (c) => {
     if (!/^https?:$/.test(target.protocol)) return c.text("Invalid URL", 400);
     const width = clampInt(c.req.query("w"), 1200, 16, 4096);
     const quality = clampInt(c.req.query("q"), 82, 40, 100);
-    const resp = await fetchOptimizedRemoteImage(target.toString(), { width, quality });
+    const resp = await fetchOptimizedRemoteImage(
+      target.toString(),
+      { width, quality, accept: c.req.header("Accept") ?? undefined },
+      c.env
+    );
 
     const contentType = resp.headers.get("content-type") ?? "application/octet-stream";
     if (!resp.ok || !contentType.toLowerCase().startsWith("image/")) {

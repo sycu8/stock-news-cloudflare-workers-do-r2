@@ -2,6 +2,8 @@ export interface Env {
   DB: D1Database;
   CACHE: KVNamespace;
   ASSETS?: R2Bucket;
+  /** Cloudflare Images transform binding (see wrangler.toml [images]) */
+  IMAGES?: import("@cloudflare/workers-types").ImagesBinding;
   AI?: Ai;
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;

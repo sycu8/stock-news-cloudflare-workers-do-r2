@@ -29,7 +29,7 @@ A production-ready Vietnam stock market news website running on Cloudflare Worke
 - UX & reliability (recent):
   - Sticky nav with logo shortlink to `/` (refresh home); header logo also links home.
   - **Tin vắn**: tab **Trong nước** (default) vs **Nước ngoài**; international finance sources (e.g. CNBC) appear under the foreign tab; sentiment badges on brief lines.
-  - Image proxy **`/img`** with Cloudflare edge transforms (`cf.image`) for external URLs; `onerror` fallback to brand logo.
+  - Image proxy **`/img`** with **Cloudflare Images** binding (`env.IMAGES`) when available, else `cf.image` transforms; `Accept`-aware AVIF/WebP; `onerror` fallback to brand logo.
   - Performance & a11y baseline: skip link, landmarks, cache headers on HTML/JSON/RSS, optional RUM `POST /api/rum`, CI workflow (Lighthouse + Pa11y smoke tests).
 
 ## Architecture
@@ -52,15 +52,19 @@ External HTTPS image URLs are rewritten to same-origin proxy URLs. The Worker im
 
 `GET /img?u=<url-encoded-https-url>&w=<16-4096>&q=<40-100>`
 
-- **Transform path:** `src/services/cf-image-fetch.ts` calls `fetch(upstream, { cf: { image: { width, fit: "scale-down", quality, metadata: "none" } } })`.
-- **Fallback:** if that response is not a valid image, the Worker fetches the upstream without `cf.image`.
+Uses the incoming request’s **`Accept`** header (forwarded internally) so responses can be **AVIF** or **WebP** when the browser supports them (smaller bytes, faster LCP).
+
+- **Primary:** **Cloudflare Images** Worker binding [`env.IMAGES`](https://developers.cloudflare.com/images/transform-images/bindings/) — configured in `[images] binding = "IMAGES"` in `wrangler.toml`. Implementation: fetch upstream bytes, then `ImagesBinding.input(...).transform({ width, fit: "scale-down" }).output({ format: image/avif|webp|jpeg, ... })` in `src/services/cf-image-fetch.ts`.
+- **Fallback:** `fetch(upstream, { cf: { image: { … format from Accept, anim: false, metadata: "none", … } } })` when the binding path is unavailable or fails (still edge-resized).
+- **Fallback (last resort):** plain upstream fetch without transforms if resizing does not yield a raster image (e.g. some edge cases).
 - **Responsive images:** `srcset` uses multiple `w` values (e.g. 320, 640, 960, 1200) on `/img` for the same `u`.
 - **Same-origin assets** under `/assets/*` are **not** passed through `/img` in the markup; they are served from R2 as before.
 
 **Account / zone requirements**
 
-- Image transforms on `fetch` require your Cloudflare account/zone to have **Image Resizing** (or equivalent Images entitlement) enabled for traffic through this Worker—this is what your **Cloudflare Images** subscription typically unlocks alongside library hosting.
-- Local `wrangler dev` may not mirror production transform behaviour; verify on a deployed `*.workers.dev` or custom hostname.
+- The **Images binding** uses the **Cloudflare Images** transform pipeline (billing per documented transformation quotas).
+- The **`cf.image`** fallback relies on **Image Resizing / Images** entitlements on your zone/account.
+- Local `wrangler dev` may use a reduced local Images mock; validate real output on a deployed Worker or use `wrangler dev --remote` for full fidelity.
 
 ### Cloudflare Images library (`imagedelivery.net`)
 
@@ -206,7 +210,7 @@ Scripts:
 
 | Area | Summary |
 |------|---------|
-| Images | `/img` + `cf.image` transforms; responsive srcset; README contract for Images library URLs |
+| Images | `/img` + `env.IMAGES` transforms + `cf.image` fallback; `Accept`-aware formats; responsive srcset; README for `imagedelivery.net` library URLs |
 | Tin vắn | Domestic / foreign tabs; CNBC-class sources in foreign tab where topic matches |
 | Navigation | Logo links to `/`; sticky nav includes logo button |
 | Performance | Cached HTML/API/RSS headers; bounded query params |

@@ -32,3 +32,7 @@ crons = ["*/5 * * * *"]
 
 [ai]
 binding = "AI"
+
+# Cloudflare Images transform API (resize/encode in the Images pipeline)
+[images]
+binding = "IMAGES"
