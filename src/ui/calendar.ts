@@ -33,6 +33,7 @@ export function renderCalendarPage(events: MarketCalendarEvent[], reportDate: st
 
   return `<!doctype html><html lang="vi" data-theme="${appearance}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Lịch thị trường</title>
+  <meta name="description" content="Lịch sự kiện thị trường chứng khoán: cổ tức, ĐHCĐ, KQKD, ETF review và đáo hạn phái sinh." />
   ${themeFontLinks()}
   <style>
     ${themeSemanticVariablesBlock()}
@@ -49,6 +50,7 @@ export function renderCalendarPage(events: MarketCalendarEvent[], reportDate: st
     .meta{color:var(--muted);font-size:.9rem}
     a{color:var(--primary);text-decoration:none}
     a:hover{text-decoration:underline}
+    button,a,input,select{min-height:var(--control-h);min-width:var(--control-h)}
     h3{margin:8px 0}
   </style></head><body class="appBody"><main class="wrap">
     <section class="card">

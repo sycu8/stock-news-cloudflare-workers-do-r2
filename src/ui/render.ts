@@ -18,6 +18,10 @@ import { renderHomeWebMcpInlineBootstrap } from "./webmcp";
 import { themeAppearanceSwitcher, themeFontLinks, themeSemanticVariablesBlock, type Appearance } from "./theme";
 import { LIVE_FEED_BAR_STYLES, renderLiveFeedBarHtml, renderLivePollScript, computeLivePollAnchor } from "./live-strip";
 import { getTodayDateKey } from "../db";
+import { buildHomeJsonLd, buildMarketingAttributionCookieScript } from "./seo";
+
+const LOGO_OPTIMIZED_96 = "/cdn-cgi/image/width=96,quality=70,format=auto/assets/brand/logo.png";
+const LOGO_OPTIMIZED_64 = "/cdn-cgi/image/width=64,quality=70,format=auto/assets/brand/logo.png";
 
 interface HomePageParams {
   dateLabel: string;
@@ -125,7 +129,7 @@ export function renderHomePage({
           }
           <div class="cardActions">
             <a class="source-link" href="${escapeAttribute((article as StoredArticle & { sourceUrl?: string }).sourceUrl ?? article.url)}" target="_blank" rel="noopener noreferrer"><span>Đọc bài viết</span></a>
-            <button class="aiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(article.url)}">AI Explain</button>
+            <button class="aiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(article.url)}">AI phân tích</button>
           </div>
         </article>
       `
@@ -161,7 +165,7 @@ export function renderHomePage({
           }
           <div class="cardActions">
             <a class="source-link" href="${escapeAttribute((article as StoredArticle & { sourceUrl?: string }).sourceUrl ?? article.url)}" target="_blank" rel="noopener noreferrer"><span>Đọc bài viết</span></a>
-            <button class="aiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(article.url)}">AI Explain</button>
+            <button class="aiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(article.url)}">AI phân tích</button>
           </div>
         </article>
       `
@@ -200,7 +204,7 @@ export function renderHomePage({
             <h3>${escapeHtml(item.title)}</h3>
             <div class="mediaCardActions">
               <a class="source-link" href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer"><span>Xem nguồn</span></a>
-              <button class="aiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI Explain</button>
+              <button class="aiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button>
             </div>
           </div>
         </article>
@@ -214,7 +218,7 @@ export function renderHomePage({
     .map(
       (item) => {
         const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
-        return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a><span class="briefTypeBadge domestic">Trong nước</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI Explain</button></li>`;
+        return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a><span class="briefTypeBadge domestic">Trong nước</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button></li>`;
       }
     )
     .join("");
@@ -222,7 +226,7 @@ export function renderHomePage({
   const internationalBriefBullets = internationalVnBriefItems
     .map((item) => {
       const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
-      return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a><span class="briefTypeBadge international">Quốc tế</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI Explain</button></li>`;
+      return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a><span class="briefTypeBadge international">Quốc tế</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button></li>`;
     })
     .join("");
   const calendarTypeLabel = (type: "dividend" | "agm" | "earnings" | "etf_review" | "derivatives_expiry"): string =>
@@ -342,16 +346,8 @@ export function renderHomePage({
       : `Tổng hợp tin tức thị trường chứng khoán Việt Nam mỗi ngày: ${report.overviewVi}`;
   const metaDescription = escapeAttribute(metaDescriptionBase.slice(0, 180));
   const canonical = canonicalUrl ? `<link rel="canonical" href="${escapeAttribute(canonicalUrl)}" />` : "";
-  const jsonLd = escapeHtml(
-    JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      name: "Tin thị trường chứng khoán Việt Nam",
-      url: canonicalUrl || "/",
-      inLanguage: "vi",
-      description: metaDescriptionBase.slice(0, 200)
-    })
-  );
+  const canonicalForSchema = canonicalUrl || "/";
+  const jsonLd = escapeHtml(buildHomeJsonLd(canonicalForSchema, metaDescriptionBase.slice(0, 200)));
   const autoRefreshCheckUrl = (() => {
     const qp = new URLSearchParams();
     if (reportDate) qp.set("date", reportDate);
@@ -426,7 +422,12 @@ export function renderHomePage({
     <meta property="og:title" content="Tin thị trường chứng khoán Việt Nam" />
     <meta property="og:description" content="${metaDescription}" />
     <meta property="og:type" content="website" />
+    <meta property="og:image" content="${escapeAttribute(LOGO_URL)}" />
     ${canonicalUrl ? `<meta property="og:url" content="${escapeAttribute(canonicalUrl)}" />` : ""}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Tin thị trường chứng khoán Việt Nam" />
+    <meta name="twitter:description" content="${metaDescription}" />
+    <meta name="twitter:image" content="${escapeAttribute(LOGO_URL)}" />
     ${themeFontLinks()}
     <script type="application/ld+json">${jsonLd}</script>
     <style>
@@ -440,13 +441,75 @@ export function renderHomePage({
       .header h1 { margin: 0 0 8px; font-size: clamp(1.28rem, 3.7vw, 2rem); line-height: 1.2; }
       .header a { color: rgba(255,255,255,.92); }
       .updateStamp { margin-top: 8px; color: rgba(255,255,255,.84); font-size: .92rem; }
-      .topNavWrap { position: sticky; top: 0; z-index: 40; margin-bottom: 12px; }
-      .topNav { display:flex; gap:10px; overflow-x:auto; padding: 10px 12px; border:1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--surface) 90%, transparent); box-shadow: var(--shadow); backdrop-filter: blur(12px); -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; width: 100%; box-sizing: border-box; }
-      .topNav::-webkit-scrollbar { display: none; }
+      .topNavWrap { position: sticky; top: 0; z-index: 40; margin-bottom: 12px; overflow: visible; }
+      /* overflow visible để submenu absolute không bị cắt; z-index để dropdown nằm trên .topNavSearchRow (sibling DOM) */
+      .topNav { display:flex; gap:10px; flex-wrap: wrap; overflow-x: visible; overflow-y: visible; padding: 10px 12px; border:1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--surface) 90%, transparent); box-shadow: var(--shadow); backdrop-filter: blur(12px); width: 100%; box-sizing: border-box; align-items:center; row-gap: 8px; position: relative; z-index: 10; }
       .topNavBrand{ display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius: 999px; border:1px solid var(--border); background: var(--surface2); flex: 0 0 auto; scroll-snap-align: start; }
       .topNavBrand img{ width:24px; height:24px; object-fit: cover; border-radius: 999px; }
       .topNavLink { white-space: nowrap; display:inline-flex; align-items:center; justify-content:center; padding: 10px 14px; border-radius: 999px; border:1px solid var(--border); background: var(--surface2); color: var(--text); font-weight: 600; flex: 0 0 auto; scroll-snap-align: start; }
       .topNavLink:hover { text-decoration:none; border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
+      .navMoreWrap { flex: 0 0 auto; position: relative; align-self: center; }
+      button.navMoreTrigger { font: inherit; cursor: pointer; }
+      .navMoreDropdown {
+        position: absolute;
+        z-index: 100;
+        right: 0;
+        left: auto;
+        top: calc(100% + 8px);
+        min-width: 220px;
+        max-width: min(260px, calc(100vw - 24px));
+        padding: 8px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface2) 98%, transparent);
+        box-shadow: 0 16px 48px rgba(15, 23, 42, 0.28);
+        display: none;
+        gap: 4px;
+      }
+      html[data-theme="dark"] .navMoreDropdown { box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55); }
+      .navMoreDropdown.open { display: grid; }
+      .navMoreDropdown .topNavDropdownLink {
+        display: flex;
+        align-items: center;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text);
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-decoration: none;
+      }
+      .navMoreDropdown .topNavDropdownLink:hover {
+        border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+        background: color-mix(in srgb, var(--primary2) 8%, transparent);
+      }
+      .topNavSearchRow { width: 100%; margin-top: 10px; flex-basis: 100%; }
+      .topSearchInner { display: flex; align-items: center; gap: 8px; width: 100%; flex-wrap: wrap; }
+      .topSearchInner input {
+        flex: 1;
+        min-width: 140px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: var(--surface2);
+        color: var(--text);
+        box-sizing: border-box;
+      }
+      .topSearchInner button{
+        border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: color-mix(in srgb, var(--primary2) 14%, var(--surface2));
+        color: var(--text);
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .aiSearchPanel{ display:none; margin-top:10px; padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--surface2); }
+      .aiSearchPanel.open{ display:block; }
+      .aiSearchList{ margin:8px 0 0; padding-left:18px; display:grid; gap:8px; }
       .skipLink{
         position:absolute; left: 8px; top: -44px; z-index: 100;
         background: var(--surface); color: var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px;
@@ -454,7 +517,7 @@ export function renderHomePage({
       .skipLink:focus{ top: 8px; }
       :focus-visible{ outline: 3px solid color-mix(in srgb, var(--primary2) 75%, #fff); outline-offset: 2px; }
       #main-content, #tin-tuc, #du-lieu, #tin-van, #du-bao { scroll-margin-top: 76px; }
-      button, a, input, select { min-height: 24px; min-width: 24px; }
+      button, a, input, select { min-height: var(--control-h); min-width: var(--control-h); }
       .srOnly{
         position:absolute !important; width:1px; height:1px; padding:0; margin:-1px;
         overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
@@ -616,7 +679,7 @@ export function renderHomePage({
       .scenarioFill{ display:block; height:100%; background: color-mix(in srgb, var(--warning) 70%, transparent); }
       /* Hot keywords */
       .chips{ display:flex; gap:8px; flex-wrap: wrap; margin-top: 10px; }
-      .chip{ display:inline-flex; align-items:center; padding: 7px 10px; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface2) 92%, transparent); color: var(--text); font-size: .9rem; }
+      .chip{ display:inline-flex; align-items:center; justify-content:center; text-align:center; padding: 7px 10px; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface2) 92%, transparent); color: var(--text); font-size: .9rem; }
       .chipStatic{ cursor: default; }
       .chip:hover{ border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); text-decoration: none; }
       /* Daily media */
@@ -727,6 +790,7 @@ export function renderHomePage({
         .topNav { padding: 8px 8px 10px; gap: 7px; }
         .topNavBrand { display: none; }
         .topNavLink { padding: 8px 11px; font-size: .86rem; font-weight: 700; }
+        .topNavSearchRow { margin-top: 8px; }
         .historySmart{ grid-template-columns: 1fr; gap: 8px; }
         .historyTabs{
           display:flex;
@@ -801,7 +865,7 @@ export function renderHomePage({
       <header class="header" role="banner">
         <div class="headerTop">
           <a class="brandHomeLink" href="/" aria-label="Về trang chủ và tải lại dữ liệu mới">
-            <img class="brandLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" width="72" height="72" fetchpriority="high" loading="eager" decoding="async" />
+            <img class="brandLogo" src="${LOGO_OPTIMIZED_96}" alt="Stock News by Orange Cloud" width="72" height="72" fetchpriority="high" loading="eager" decoding="async" />
           </a>
           <div class="brandText">
             <h1 id="headerTitle">Tin thị trường chứng khoán Việt Nam</h1>
@@ -812,20 +876,36 @@ export function renderHomePage({
         </div>
       </header>
       <div class="topNavWrap">
-        <nav class="topNav" aria-label="Điều hướng nhanh">
+        <nav class="topNav" aria-label="Điều hướng chính">
           <a class="topNavBrand" href="/" aria-label="Về trang chủ và làm mới trang">
-            <img src="${LOGO_URL}" alt="Logo trang chủ" width="24" height="24" loading="eager" decoding="async" />
+            <img src="${LOGO_OPTIMIZED_64}" alt="Logo trang chủ" width="24" height="24" loading="eager" decoding="async" />
           </a>
-          <a class="topNavLink" href="#du-lieu">Dữ liệu</a>
+          <a class="topNavLink" href="/briefing">Tổng quan</a>
           <a class="topNavLink" href="#tin-van">Tin vắn</a>
+          <a class="topNavLink" href="#tin-tuc">Điểm tin</a>
+          <a class="topNavLink" href="#du-lieu">Dữ liệu</a>
           <a class="topNavLink" href="#du-bao">Dự báo</a>
-          <a class="topNavLink" href="#tin-tuc">Tin tức</a>
-          <a class="topNavLink" href="/calendar">Lịch</a>
-          <a class="topNavLink" href="/desk">Desk</a>
-          <a class="topNavLink" href="/briefing">Brief</a>
-          <a class="topNavLink" href="/notify">Thông báo</a>
-          <a class="topNavLink" href="/status">Trạng thái</a>
+          <div class="navMoreWrap">
+            <button type="button" id="navMoreToggle" class="topNavLink navMoreTrigger" aria-expanded="false" aria-haspopup="true" aria-controls="navMoreMenu" aria-label="Thêm danh mục">Thêm ⋯</button>
+            <div id="navMoreMenu" class="navMoreDropdown" role="menu" aria-hidden="true">
+              <a class="topNavDropdownLink" href="/calendar" role="menuitem">Lịch</a>
+              <a class="topNavDropdownLink" href="/desk" role="menuitem">Briefing+</a>
+              <a class="topNavDropdownLink" href="/notify" role="menuitem">Thông báo</a>
+              <a class="topNavDropdownLink" href="/status" role="menuitem">Trạng thái</a>
+            </div>
+          </div>
         </nav>
+        <div class="topNavSearchRow">
+          <div class="topSearchInner">
+            <input id="aiSearchInput" type="search" placeholder="AI Search — mã, ngành, sự kiện…" aria-label="AI Search đọc trong ngày" />
+            <button id="aiSearchBtn" type="button">AI Search</button>
+          </div>
+        </div>
+        <section id="aiSearchPanel" class="aiSearchPanel" aria-live="polite">
+          <strong>Kết quả AI Search</strong>
+          <div id="aiSearchMeta" class="meta"></div>
+          <ul id="aiSearchList" class="aiSearchList"></ul>
+        </section>
       </div>
       <main id="main-content" role="main">
       <section class="panel">
@@ -1071,7 +1151,7 @@ export function renderHomePage({
       </main>
       <footer class="footer" role="contentinfo">
         <div class="footerBrand">
-          <img class="footerLogo" src="${LOGO_URL}" alt="Stock News by Orange Cloud" width="52" height="52" loading="lazy" decoding="async" />
+          <img class="footerLogo" src="${LOGO_OPTIMIZED_64}" alt="Stock News by Orange Cloud" width="52" height="52" loading="lazy" decoding="async" />
           <div>
             <strong>Stock News by Orange Cloud</strong>
             <p>Tổng hợp tin chứng khoán Việt Nam theo ngày, tối ưu cho desktop và mobile.</p>
@@ -1084,6 +1164,26 @@ export function renderHomePage({
     <div class="backTop" id="backTop"><button type="button" aria-label="Back to top">↑ Lên đầu trang</button></div>
 
     <script>
+      ${buildMarketingAttributionCookieScript()}
+      (function(){
+        try{
+          var consent = document.cookie.includes("sn_consent_mkt=1");
+          if(!consent){
+            var bar = document.createElement("div");
+            bar.setAttribute("style","position:fixed;left:12px;right:12px;bottom:12px;z-index:130;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow);font-size:.86rem");
+            bar.innerHTML = '<strong>Cookie marketing</strong><p style="margin:8px 0;color:var(--muted)">Cho phép theo dõi chiến dịch để cải thiện nội dung và landing page.</p><button id="consentYes" style="margin-right:8px">Đồng ý</button><button id="consentNo">Từ chối</button>';
+            document.body.appendChild(bar);
+            var bind = function(id,val){
+              var el = document.getElementById(id);
+              el&&el.addEventListener("click", function(){
+                fetch("/api/consent",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({marketing:val})}).finally(function(){bar.remove();});
+              });
+            };
+            bind("consentYes",true); bind("consentNo",false);
+          }
+          navigator.sendBeacon("/api/sem/event", JSON.stringify({event:"page_view", path:location.pathname+location.search, at:new Date().toISOString()}));
+        }catch(_){}
+      })();
       ${renderHomeWebMcpInlineBootstrap({
         reportDate,
         selectedSource: selectedSource ?? "",
@@ -1202,7 +1302,7 @@ export function renderHomePage({
       });
       const aiModalBackdrop = document.createElement("div");
       aiModalBackdrop.className = "aiModalBackdrop";
-      aiModalBackdrop.innerHTML = '<div class="aiModal" role="dialog" aria-modal="true" aria-label="AI Explain"><div class="aiModalHead"><h3 style="margin:0;">AI Explain</h3><button class="aiModalClose" type="button">Đóng</button></div><div class="aiModalBody">Đang phân tích...</div></div>';
+      aiModalBackdrop.innerHTML = '<div class="aiModal" role="dialog" aria-modal="true" aria-label="AI phân tích"><div class="aiModalHead"><h3 style="margin:0;">AI phân tích</h3><button class="aiModalClose" type="button">Đóng</button></div><div class="aiModalBody">Đang phân tích...</div></div>';
       document.body.appendChild(aiModalBackdrop);
       const aiModalBody = aiModalBackdrop.querySelector(".aiModalBody");
       const aiModalClose = aiModalBackdrop.querySelector(".aiModalClose");
@@ -1231,9 +1331,76 @@ export function renderHomePage({
             if (aiModalBody) aiModalBody.textContent = "Không thể tạo giải thích lúc này. Vui lòng thử lại sau.";
           } finally {
             btn.removeAttribute("disabled");
-            btn.textContent = "AI Explain";
+            btn.textContent = "AI phân tích";
           }
         });
+      });
+      const aiSearchInput = document.getElementById("aiSearchInput");
+      const aiSearchBtn = document.getElementById("aiSearchBtn");
+      const aiSearchPanel = document.getElementById("aiSearchPanel");
+      const aiSearchMeta = document.getElementById("aiSearchMeta");
+      const aiSearchList = document.getElementById("aiSearchList");
+      async function runAiSearch(){
+        const qVal = (aiSearchInput && "value" in aiSearchInput ? aiSearchInput.value : "").trim();
+        if(!qVal) return;
+        if (aiSearchMeta) aiSearchMeta.textContent = "Đang tìm bằng Cloudflare AI...";
+        if (aiSearchList) aiSearchList.innerHTML = "";
+        aiSearchPanel && aiSearchPanel.classList.add("open");
+        try{
+          const reportDate = ${JSON.stringify(reportDate)};
+          const resp = await fetch("/api/search/ai?q=" + encodeURIComponent(qVal) + "&date=" + encodeURIComponent(reportDate), { cache: "no-store" });
+          const data = await resp.json();
+          const rows = Array.isArray(data?.results) ? data.results : [];
+          if (aiSearchMeta) aiSearchMeta.textContent = rows.length ? ("Tìm thấy " + rows.length + " kết quả phù hợp nhất.") : "Không có kết quả phù hợp.";
+          if (aiSearchList) {
+            aiSearchList.innerHTML = rows.map((r) => '<li><a href="/article?u=' + encodeURIComponent(r.url) + '">' + String(r.title ?? "") + '</a> <span class="meta">(' + String(r.sourceName ?? "") + ')</span></li>').join("");
+          }
+        }catch{
+          if (aiSearchMeta) aiSearchMeta.textContent = "AI Search tạm lỗi, vui lòng thử lại.";
+        }
+      }
+      aiSearchBtn && aiSearchBtn.addEventListener("click", runAiSearch);
+      aiSearchInput && aiSearchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); runAiSearch(); }
+      });
+
+      // Menu "Thêm": fixed panel (tránh bị overflow cắt), đóng khi click ngoài / Escape / scroll
+      const navMoreToggle = document.getElementById("navMoreToggle");
+      const navMoreMenuEl = document.getElementById("navMoreMenu");
+      function navMoreClose() {
+        if (!navMoreMenuEl || !navMoreToggle) return;
+        navMoreMenuEl.classList.remove("open");
+        navMoreToggle.setAttribute("aria-expanded", "false");
+        navMoreMenuEl.setAttribute("aria-hidden", "true");
+      }
+      function navMoreOpen() {
+        if (!navMoreMenuEl || !navMoreToggle) return;
+        navMoreMenuEl.classList.add("open");
+        navMoreToggle.setAttribute("aria-expanded", "true");
+        navMoreMenuEl.setAttribute("aria-hidden", "false");
+      }
+      navMoreToggle?.addEventListener("click", (e) => {
+        e.preventDefault();
+        const open = navMoreMenuEl?.classList.contains("open");
+        if (open) navMoreClose();
+        else navMoreOpen();
+      });
+      document.addEventListener(
+        "click",
+        (e) => {
+          if (!navMoreMenuEl?.classList.contains("open")) return;
+          const t = e.target;
+          if (!(t instanceof Element)) return;
+          if (navMoreToggle?.contains(t) || navMoreMenuEl?.contains(t)) return;
+          navMoreClose();
+        },
+        true
+      );
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        if (!navMoreMenuEl?.classList.contains("open")) return;
+        navMoreClose();
+        navMoreToggle?.focus();
       });
 
       // Auto refresh every 5 minutes when fresh crawl is available.
@@ -1512,8 +1679,8 @@ function renderResponsiveImage(
 function buildCloudflareSrcset(src: string): string {
   /** Remote HTTPS images: optimize via Workers /img + Cloudflare image transforms on fetch. Same-origin paths: no responsive srcset (avoid invalid /cdn-cgi paths). */
   if (!/^https?:\/\//i.test(src)) return "";
-  const widths = [320, 640, 960, 1200];
-  return widths.map((w) => `/img?${imgProxyQuery(src, { w, q: 82 })} ${w}w`).join(", ");
+  const widths = [240, 480, 768, 1024];
+  return widths.map((w) => `/img?${imgProxyQuery(src, { w, q: 76 })} ${w}w`).join(", ");
 }
 
 function imgProxyQuery(u: string, opts: { w: number; q: number }): string {
@@ -1526,7 +1693,7 @@ function imgProxyQuery(u: string, opts: { w: number; q: number }): string {
 
 function proxiedImageUrl(src: string): string {
   if (!/^https?:\/\//i.test(src)) return src;
-  return `/img?${imgProxyQuery(src, { w: 960, q: 82 })}`;
+  return `/img?${imgProxyQuery(src, { w: 640, q: 76 })}`;
 }
 
 function isInternationalSource(item: MediaItemRecord): boolean {
@@ -1569,9 +1736,9 @@ function buildBriefVerificationMap(items: MediaItemRecord[]): Map<string, number
 
 function renderBriefVerificationBadge(item: MediaItemRecord, verification: Map<string, number>): string {
   const count = verification.get(normalizeBriefTitle(item.title)) ?? 1;
-  if (count >= 3) return '<span class="briefVerifyBadge confirmed">✅ Confirmed by 3 sources</span>';
-  if (count <= 1) return '<span class="briefVerifyBadge single">⚠️ Single source only</span>';
-  return '<span class="briefVerifyBadge breaking">🔥 Breaking / unconfirmed</span>';
+  if (count >= 3) return '<span class="briefVerifyBadge confirmed">✅ Đã xác nhận từ 3 nguồn</span>';
+  if (count <= 1) return '<span class="briefVerifyBadge single">⚠️ Mới có 1 nguồn</span>';
+  return '<span class="briefVerifyBadge breaking">🔥 Tin nhanh / chưa xác nhận</span>';
 }
 
 function normalizeBriefTitle(title: string): string {
@@ -1740,16 +1907,44 @@ export function renderArticleDetailPage(params: {
   cacheStatus?: "hit" | "miss";
   appearance?: Appearance;
   returnPath?: string;
+  canonicalUrl?: string;
 }): string {
   const p = params;
   const appearance = p.appearance ?? "light";
   const returnPath =
     p.returnPath && p.returnPath.startsWith("/") && !p.returnPath.startsWith("//") ? p.returnPath : "/";
   const sw = themeAppearanceSwitcher(appearance, returnPath);
+  const canonical = p.canonicalUrl ?? returnPath;
+  const articleDescription = (p.summaryVi || p.snippet || p.title).slice(0, 180);
+  const articleJsonLd = escapeHtml(
+    JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      headline: p.title,
+      datePublished: p.publishedAt,
+      dateModified: p.publishedAt,
+      inLanguage: "vi",
+      description: articleDescription,
+      image: [p.imageUrl || LOGO_URL],
+      mainEntityOfPage: canonical
+    })
+  );
   return `<!doctype html><html lang="vi" data-theme="${appearance}"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(p.title)}</title>
+  <meta name="description" content="${escapeAttribute(articleDescription)}" />
+  <link rel="canonical" href="${escapeAttribute(canonical)}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="${escapeAttribute(p.title)}" />
+  <meta property="og:description" content="${escapeAttribute(articleDescription)}" />
+  <meta property="og:image" content="${escapeAttribute(p.imageUrl || LOGO_URL)}" />
+  <meta property="og:url" content="${escapeAttribute(canonical)}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeAttribute(p.title)}" />
+  <meta name="twitter:description" content="${escapeAttribute(articleDescription)}" />
+  <meta name="twitter:image" content="${escapeAttribute(p.imageUrl || LOGO_URL)}" />
   <link rel="icon" type="image/png" href="${LOGO_URL}" />
   ${themeFontLinks()}
+  <script type="application/ld+json">${articleJsonLd}</script>
   <style>
     ${themeSemanticVariablesBlock()}
     .articleTopRow{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:10px}

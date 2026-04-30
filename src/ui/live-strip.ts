@@ -94,7 +94,7 @@ export function renderLivePollScript(config: {
         if(n>0 && pn>0){
           txt.textContent="Có "+pn+" tin mới có thể liên quan mã của bạn (tổng "+n+" bài trong lô crawl).";
           bar.classList.add("open"); bar.hidden=false;
-          notifyBrowser("Portfolio",{body:txt.textContent});
+          notifyBrowser("Danh mục",{body:txt.textContent});
         } else if(n>0){ txt.textContent="Có "+n+" bài mới trong ngày."; bar.classList.add("open"); bar.hidden=false; }
       }else{
         if(n>0){ txt.textContent="Có "+n+" bài mới — bấm tải lại để xem đầy đủ."; bar.classList.add("open"); bar.hidden=false;

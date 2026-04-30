@@ -52,6 +52,8 @@ export interface Env {
   CF_IMAGES_ACCOUNT_HASH?: string;
   /** Variant name for hosted Images delivery */
   CF_IMAGES_VARIANT?: string;
+  /** Seed URLs for website crawl container used by AI Search (comma-separated). */
+  WEBSITE_CRAWL_SEEDS?: string;
   /**
    * RFC 9728: comma-separated HTTPS OAuth/OIDC issuer identifiers (RFC 8414).
    * When unset, metadata uses this deployment’s origin (see `/.well-known/oauth-authorization-server`).

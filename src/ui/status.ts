@@ -36,6 +36,7 @@ export function renderStatusPage(params: {
   const sw = themeAppearanceSwitcher(params.appearance, "/status");
   return `<!doctype html><html lang="vi" data-theme="${params.appearance}"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Trạng thái hệ thống • VN Market Daily</title>
+  <meta name="description" content="Trang theo dõi sức khỏe nguồn dữ liệu, AI và tần suất cập nhật của hệ thống." />
   ${themeFontLinks()}
   <style>
     ${themeSemanticVariablesBlock()}
@@ -46,6 +47,7 @@ export function renderStatusPage(params: {
     .kpi{border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--kpi-bg)}
     table{width:100%;border-collapse:collapse}
     th,td{padding:8px;border-bottom:1px solid var(--border);text-align:left;font-size:.92rem;vertical-align:top}
+    button,a,input,select{min-height:var(--control-h);min-width:var(--control-h)}
     .b{padding:3px 8px;border-radius:999px;font-size:.78rem;font-weight:700}
     .ok{background:#dcfce7;color:#166534}.err{background:#fee2e2;color:#991b1b}.unk{background:#e5e7eb;color:#374151}
   </style></head><body class="appBody"><main class="wrap">

@@ -20,9 +20,25 @@ export function appearanceSetCookieHeader(appearance: Appearance): string {
 
 /** Google Fonts — luôn dùng cặp này trên toàn site. */
 export function themeFontLinks(): string {
-  return `<link rel="preconnect" href="https://fonts.googleapis.com" />
+  return `<script>
+(() => {
+  const cookie = document.cookie.match(/(?:^|;\\s*)sn_theme=(light|dark)(?:\\s|;|$)/i);
+  const theme = cookie?.[1]?.toLowerCase() === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", theme);
+  window.__snToggleTheme = () => {
+    const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    const next = current === "dark" ? "light" : "dark";
+    document.cookie = "sn_theme=" + next + "; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax";
+    document.documentElement.setAttribute("data-theme", next);
+    window.location.reload();
+  };
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />`;
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" /></noscript>`;
 }
 
 /** Biến semantic: gắn trên `html[data-theme="light|dark"]`. */
@@ -76,6 +92,35 @@ export function themeSemanticVariablesBlock(): string {
     background: var(--bg);
     color: var(--text);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    line-height: var(--line-normal, 1.5);
+  }
+  :root {
+    --font-size-xs: 12px;
+    --font-size-sm: 14px;
+    --font-size-md: 16px;
+    --font-size-lg: 18px;
+    --font-size-xl: 20px;
+    --font-size-2xl: 24px;
+    --line-tight: 1.25;
+    --line-normal: 1.5;
+    --line-relaxed: 1.65;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-pill: 999px;
+    --control-h: 44px;
+    --z-nav: 50;
+    --z-sticky: 70;
+    --z-floating: 96;
+    --z-modal: 120;
   }
   .appearanceSwitch {
     display: inline-flex;
@@ -109,8 +154,8 @@ export function themeSemanticVariablesBlock(): string {
   .themeCorner {
     position: fixed;
     right: max(12px, env(safe-area-inset-right));
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-    z-index: 96;
+    bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+    z-index: var(--z-floating);
     pointer-events: auto;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.12));
   }
@@ -138,6 +183,6 @@ export function themeAppearanceSwitcher(appearance: Appearance, returnPath: stri
   const icon = target === "dark" ? "☾" : "☀";
   return `<div class="appearanceSwitch" role="group" aria-label="Chế độ giao diện">
     <span class="appearanceSwitchLabel">Giao diện</span>
-    <a class="appearanceSwitchBtn" href="/api/set-appearance?theme=${target}&next=${encodeURIComponent(next)}">${icon} ${labelVi}</a>
+    <button class="appearanceSwitchBtn" type="button" data-next="${encodeURIComponent(next)}" onclick="window.__snToggleTheme && window.__snToggleTheme()">${icon} ${labelVi}</button>
   </div>`;
 }

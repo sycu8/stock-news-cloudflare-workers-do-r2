@@ -5,7 +5,6 @@ import {
   createSource,
   deleteManualArticle,
   deleteSource,
-  ensureDefaultSources,
   getArticleByUrl,
   getMediaItemByUrl,
   listRecentArticlesForSitemap,
@@ -42,7 +41,7 @@ import { renderStockPage } from "./ui/stocks";
 import { buildChartsForToday } from "./ui/charts";
 import { extractHotKeywords } from "./services/hot-keywords";
 import { getViewsMap, incrementView } from "./services/views";
-import { LOGO_ASSET_KEY } from "./ui/brand";
+import { LOGO_ASSET_KEY, LOGO_URL } from "./ui/brand";
 import { analyzeSentimentForArticles, classifySentimentText } from "./services/sentiment";
 import { fetchAndExtractSource } from "./services/source-extract";
 import { fetchOptimizedRemoteImage } from "./services/cf-image-fetch";
@@ -85,6 +84,7 @@ import {
   themeSemanticVariablesBlock,
   type Appearance,
 } from "./ui/theme";
+import { buildCanonicalUrl } from "./ui/seo";
 import { hotScore } from "./services/article-heat";
 import {
   buildDailyInvestorSnapshot,
@@ -101,6 +101,8 @@ import {
   renderMorningBriefing,
   renderPortfolioDesk
 } from "./ui/investor-desk";
+import { searchArticlesWithCloudflareAi } from "./services/ai-search";
+import { crawlWebsiteIntoContainer, getWebsiteContainerDocs } from "./services/site-crawl-container";
 
 const app = new Hono<{ Bindings: Env }>();
 const ADMIN_COOKIE_NAME = "admin_token";
@@ -113,11 +115,6 @@ function jsonUnauthorizedWithResourceMetadata(c: Context<{ Bindings: Env }>) {
     { "WWW-Authenticate": wwwAuthenticateResourceMetadata(new URL(c.req.url).origin) }
   );
 }
-
-app.use("*", async (c, next) => {
-  await ensureDefaultSources(c.env.DB);
-  await next();
-});
 
 function readAppearance(c: { req: { header(name: string): string | undefined } }): Appearance {
   return parseAppearanceFromCookie(c.req.header("cookie"));
@@ -207,13 +204,7 @@ app.on(["GET", "HEAD"], "/", async (c) => {
           const hsxSymbols = (feed.hsxMarketSnapshot?.topVolume ?? []).map((item) => item.symbol).filter(Boolean);
           const hotKeywords = withPriorityKeywords(extractHotKeywords(feed.articles, 12), hsxSymbols, 12);
 
-          const pinCandidateFeed = await getFeedByDate(c.env, reportDate, {
-            sourceFilter: source || undefined,
-            page: 1,
-            pageSize: 200,
-            q: q || undefined
-          });
-          const withViewsAll = pinCandidateFeed.articles.map((a) => ({
+          const withViewsAll = feed.articles.map((a) => ({
             article: a,
             views: views[a.url] ?? 0,
             score: hotScore(a),
@@ -263,9 +254,8 @@ app.on(["GET", "HEAD"], "/", async (c) => {
             })
           );
 
-          const canonicalUrl = new URL(c.req.url);
-          canonicalUrl.searchParams.sort();
-          const miniCalendarEvents = buildMarketCalendarFromArticles(pinCandidateFeed.articles, reportDate, 30).slice(0, 6);
+          const canonicalUrl = buildCanonicalUrl(c.req.url, ["date", "source", "sentiment", "q", "page"]);
+          const miniCalendarEvents = buildMarketCalendarFromArticles(feed.articles, reportDate, 30).slice(0, 6);
           const html = renderHomePage({
             dateLabel: formatVietnamDateDisplay(`${feed.reportDate}T12:00:00+07:00`),
             report: feed.report,
@@ -281,11 +271,11 @@ app.on(["GET", "HEAD"], "/", async (c) => {
             selectedSentiment: sentiment === "positive" || sentiment === "neutral" || sentiment === "negative" ? sentiment : undefined,
             chartsHtml: charts.html,
             hotKeywords,
-            canonicalUrl: canonicalUrl.toString(),
+            canonicalUrl,
             reportDate,
             q,
             page,
-            total: pinCandidateFeed.total,
+            total: feed.total,
             pageSize: 12,
             updatedAt: feed.cachedAt,
             reportHistory: feed.reportHistory,
@@ -309,6 +299,105 @@ app.on(["GET", "HEAD"], "/", async (c) => {
 app.get("/search", (c) => {
   const qp = new URL(c.req.url).searchParams;
   return c.redirect(`/?${qp.toString()}`, 302);
+});
+
+app.get("/api/search/ai", async (c) => {
+  try {
+    const q = clampText(c.req.query("q"), 120) ?? "";
+    const date = (c.req.query("date") ?? "").trim();
+    const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
+    if (!q.trim()) return c.json({ query: q, results: [] }, 200, { "cache-control": "no-store" });
+    const feed = await getFeedByDate(c.env, reportDate, { page: 1, pageSize: 180 });
+    const siteDocs = await getWebsiteContainerDocs(c.env);
+    const containerArticles = siteDocs.map((doc, idx) => ({
+      id: -(idx + 1),
+      sourceId: "website-crawl",
+      sourceName: "Website",
+      title: doc.title || "Trang website",
+      url: doc.url,
+      publishedAt: doc.crawledAt,
+      snippet: doc.text.slice(0, 420),
+      contentLimited: false,
+      summaryVi: doc.text.slice(0, 360),
+      imageUrl: null
+    }));
+    const merged = [...feed.articles, ...containerArticles];
+    const dedup = new Map<string, (typeof merged)[number]>();
+    for (const item of merged) {
+      if (!dedup.has(item.url)) dedup.set(item.url, item);
+    }
+    const results = await searchArticlesWithCloudflareAi(c.env, q, Array.from(dedup.values()), 8);
+    return c.json({ query: q, reportDate, results }, 200, {
+      "cache-control": "public, max-age=20, s-maxage=60, stale-while-revalidate=120"
+    });
+  } catch (error) {
+    console.error("GET /api/search/ai failed:", error);
+    return c.json({ error: "ai_search_failed" }, 500);
+  }
+});
+
+app.post("/admin/ai-search/crawl", async (c) => {
+  if (!isAdminAuthorized(c)) return c.text("Unauthorized", 401);
+  try {
+    const seedCsv = c.env.WEBSITE_CRAWL_SEEDS ?? `${new URL(c.req.url).origin}/`;
+    const seeds = seedCsv
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    const result = await crawlWebsiteIntoContainer(c.env, { seedUrls: seeds, maxPages: 30, perPageTextLimit: 2800 });
+    return c.json({ ok: true, ...result }, 200, { "cache-control": "no-store" });
+  } catch (error) {
+    console.error("POST /admin/ai-search/crawl failed:", error);
+    return c.json({ ok: false, error: "crawl_failed" }, 500, { "cache-control": "no-store" });
+  }
+});
+
+app.post("/admin/ai-search/crawl/run", async (c) => {
+  if (!isAdminAuthorized(c)) return c.text("Unauthorized", 401);
+  try {
+    const seedCsv = c.env.WEBSITE_CRAWL_SEEDS ?? `${new URL(c.req.url).origin}/`;
+    const seeds = seedCsv
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    const result = await crawlWebsiteIntoContainer(c.env, { seedUrls: seeds, maxPages: 30, perPageTextLimit: 2800 });
+    return redirectAdmin(c, `Đã rebuild AI Search container: ${result.crawled} trang`);
+  } catch (error) {
+    console.error("POST /admin/ai-search/crawl/run failed:", error);
+    return redirectAdmin(c, "Rebuild AI Search container thất bại");
+  }
+});
+
+app.get("/l/:slug", (c) => {
+  const slug = clampText(c.req.param("slug"), 64) ?? "chien-dich";
+  const title = slug
+    .split("-")
+    .map((x) => x.charAt(0).toUpperCase() + x.slice(1))
+    .join(" ");
+  const canonical = `${new URL(c.req.url).origin}/l/${encodeURIComponent(slug)}`;
+  const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${title} | Stock News</title>
+  <meta name="description" content="Trang đích dành cho nhà đầu tư dùng điện thoại: cập nhật tin nhanh, bảng điều khiển thị trường và danh mục cá nhân hóa."/>
+  <link rel="canonical" href="${canonical}" />
+  <meta property="og:type" content="website" /><meta property="og:title" content="${title} | Stock News" />
+  <meta property="og:description" content="Theo dõi thị trường chứng khoán Việt Nam real-time, tối ưu cho mobile." />
+  <meta property="og:url" content="${canonical}" />
+  <meta property="og:image" content="${LOGO_URL}" />
+  ${themeFontLinks()}
+  <style>${themeSemanticVariablesBlock()}body.appBody{margin:0}.landing{max-width:760px;margin:0 auto;padding:20px}.hero{border:1px solid var(--border);background:var(--surface);padding:20px;border-radius:16px;box-shadow:var(--shadow)}.cta{display:inline-flex;padding:12px 16px;border-radius:12px;background:var(--primary);color:#fff;text-decoration:none;font-weight:700;margin-top:12px}</style></head>
+  <body class="appBody"><main class="landing"><section class="hero"><h1>${title}</h1><p>Nhịp thị trường mỗi 5 phút, tín hiệu ưu tiên cho nhà đầu tư bận rộn, đọc tốt trên điện thoại.</p><a class="cta" href="/?utm_source=landing&utm_medium=cta&utm_campaign=${encodeURIComponent(
+    slug
+  )}">Mở bảng thị trường</a></section></main>
+  <script>try{navigator.sendBeacon("/api/sem/event",JSON.stringify({event:"landing_view",slug:${JSON.stringify(
+    slug
+  )},path:location.pathname+location.search,at:new Date().toISOString()}));}catch(_){}</script>
+  </body></html>`;
+  return c.html(html, 200, {
+    "cache-control": htmlCacheControl(),
+    "content-language": "vi"
+  });
 });
 
 const PORTFOLIO_COOKIE = "vnwatch";
@@ -555,7 +644,7 @@ app.get("/img", async (c) => {
       headers: {
         "content-type": contentType,
         vary: resp.headers.get("vary") ?? "Accept",
-        "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800"
+        "cache-control": "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800"
       }
     });
   } catch {
@@ -575,6 +664,7 @@ app.get("/article", async (c) => {
     const summary = article?.summaryVi ?? extracted?.text?.slice(0, 360) ?? "Chưa có tóm tắt.";
     const snippet = article?.snippet ?? extracted?.text?.slice(0, 800) ?? "";
     const sentimentLabel = classifySentimentText(`${title}\n${summary}\n${snippet}`).label;
+    const canonicalUrl = buildCanonicalUrl(c.req.url, ["d", "u"]);
     return c.html(
       renderArticleDetailPage({
         title,
@@ -587,7 +677,8 @@ app.get("/article", async (c) => {
         sentimentLabel,
         cacheStatus: "miss",
         appearance: readAppearance(c),
-        returnPath: `/article?u=${encodeURIComponent(url)}`
+        returnPath: `/article?u=${encodeURIComponent(url)}`,
+        canonicalUrl
       }),
       200,
       {
@@ -651,7 +742,7 @@ app.get("/api/news/today", async (c) => {
       cachedAt: feed.cachedAt,
       articles: feed.articles
     }, 200, {
-      "cache-control": "public, s-maxage=60, stale-while-revalidate=300, stale-if-error=3600"
+      "cache-control": "public, max-age=30, s-maxage=60, stale-while-revalidate=300, stale-if-error=3600"
     });
   } catch (error) {
     console.error("GET /api/news/today failed:", error);
@@ -770,6 +861,30 @@ app.post("/api/rum", async (c) => {
     return c.json({ ok: true }, 202);
   } catch {
     return c.json({ error: "invalid rum payload" }, 400);
+  }
+});
+
+app.post("/api/sem/event", async (c) => {
+  try {
+    const payload = await c.req.json();
+    const event = clampText(payload?.event, 64) ?? "unknown";
+    const path = clampText(payload?.path, 240) ?? "";
+    const slug = clampText(payload?.slug, 64) ?? "";
+    console.log("sem_event", JSON.stringify({ event, path, slug, at: new Date().toISOString() }));
+    return c.json({ ok: true }, 202, { "cache-control": "no-store" });
+  } catch {
+    return c.json({ error: "invalid_sem_event" }, 400);
+  }
+});
+
+app.post("/api/consent", async (c) => {
+  try {
+    const payload = await c.req.json();
+    const marketing = Boolean(payload?.marketing);
+    c.header("Set-Cookie", `sn_consent_mkt=${marketing ? "1" : "0"}; Path=/; Max-Age=31536000; SameSite=Lax`);
+    return c.json({ ok: true, marketing }, 200, { "cache-control": "no-store" });
+  } catch {
+    return c.json({ error: "invalid_consent_payload" }, 400);
   }
 });
 
@@ -986,6 +1101,12 @@ app.get("/sitemap.xml", async (c) => {
 
     entries.push({ loc: `${origin}/`, changefreq: "hourly", priority: 1 });
     entries.push({ loc: `${origin}/calendar`, changefreq: "daily", priority: 0.75 });
+    entries.push({ loc: `${origin}/desk`, changefreq: "hourly", priority: 0.8 });
+    entries.push({ loc: `${origin}/briefing`, changefreq: "hourly", priority: 0.78 });
+    entries.push({ loc: `${origin}/markets`, changefreq: "hourly", priority: 0.76 });
+    entries.push({ loc: `${origin}/portfolio`, changefreq: "daily", priority: 0.68 });
+    entries.push({ loc: `${origin}/intel`, changefreq: "daily", priority: 0.62 });
+    entries.push({ loc: `${origin}/docs/api`, changefreq: "weekly", priority: 0.55 });
     entries.push({ loc: `${origin}/notify`, changefreq: "monthly", priority: 0.5 });
     entries.push({ loc: `${origin}/status`, changefreq: "hourly", priority: 0.45 });
     entries.push({ loc: `${origin}/rss/today`, changefreq: "hourly", priority: 0.8 });
@@ -1490,7 +1611,7 @@ app.post("/admin/sources/:id/delete", async (c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const dayKey = getTodayDateKey();
     console.log(`Scheduled refresh started for ${dayKey}`);
     ctx.waitUntil(
@@ -1502,6 +1623,26 @@ export default {
           console.error("Scheduled refresh failed:", error);
         })
     );
+    const minute = new Date(controller.scheduledTime).getUTCMinutes();
+    if (minute % 30 === 0) {
+      const seedCsv = env.WEBSITE_CRAWL_SEEDS ?? "";
+      const seeds = seedCsv
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .slice(0, 20);
+      if (seeds.length) {
+        ctx.waitUntil(
+          crawlWebsiteIntoContainer(env, { seedUrls: seeds, maxPages: 30, perPageTextLimit: 2800 })
+            .then((result) => {
+              console.log("Scheduled AI crawl container refreshed:", JSON.stringify(result));
+            })
+            .catch((error) => {
+              console.error("Scheduled AI crawl container failed:", error);
+            })
+        );
+      }
+    }
   }
 };
 
@@ -1562,7 +1703,7 @@ function clampInt(input: string | undefined, fallback: number, min: number, max:
 }
 
 function htmlCacheControl(): string {
-  return "public, s-maxage=300, stale-while-revalidate=900, stale-if-error=3600";
+  return "public, max-age=60, s-maxage=300, stale-while-revalidate=900, stale-if-error=3600";
 }
 
 function withPriorityKeywords(base: string[], priority: string[], max: number): string[] {

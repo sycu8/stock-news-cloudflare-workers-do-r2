@@ -371,6 +371,9 @@ export function renderAdminSourcesPage({ sources, runs, manualArticles, message,
           <form method="POST" action="/admin/refresh">
             <button type="submit">Làm mới ngay</button>
           </form>
+          <form method="POST" action="/admin/ai-search/crawl/run">
+            <button type="submit">Rebuild AI Search Container</button>
+          </form>
         </div>
         ${message ? `<div class="notice">${escapeHtml(message)}</div>` : ""}
       </section>

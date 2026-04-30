@@ -19,6 +19,7 @@ export function renderNotifyPage(params: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Thông báo — Stock News</title>
+  <meta name="description" content="Nhận thông báo Telegram cho các cập nhật thị trường quan trọng từ Stock News." />
   <link rel="icon" type="image/png" href="${LOGO_URL}" />
   ${themeFontLinks()}
   <style>
@@ -34,6 +35,7 @@ export function renderNotifyPage(params: {
     code { font-size: .85rem; background: var(--code-bg); border:1px solid var(--border); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
     ol { padding-left: 18px; margin: 12px 0; }
     li { margin: 8px 0; }
+    button,a,input,select{min-height:var(--control-h);min-width:var(--control-h)}
   </style>
 </head>
 <body class="appBody">

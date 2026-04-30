@@ -50,7 +50,8 @@ function deskShell(params: {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${esc(title)} • Desk</title>
+  <title>${esc(title)} • Tổng quan</title>
+  <meta name="description" content="Tổng quan tối ưu di động: điểm tin sáng, thị trường và danh mục theo dõi cá nhân hóa." />
   <link rel="icon" type="image/png" href="${LOGO_URL}" />
   ${themeFontLinks()}
   <style>
@@ -84,6 +85,7 @@ function deskShell(params: {
       padding: 8px 14px; border-radius: 999px; font-size: .82rem; font-weight: 600;
       color: var(--muted); text-decoration: none; border: 1px solid transparent;
     }
+    button,a,input,select{min-height:var(--control-h);min-width:var(--control-h)}
     .deskNavItem:hover { color: var(--text); border-color: var(--border); }
     html[data-theme="dark"] .deskNavItem.active {
       color: #0a0a0a; background: linear-gradient(135deg, #fff, #e2e8f0); border-color: rgba(255,255,255,.35);
@@ -171,13 +173,13 @@ function deskShell(params: {
     <div class="deskTopInner">
       <a class="deskBrand" href="/desk">
         <img src="${LOGO_URL}" alt="" width="40" height="40" />
-        <div><h1>StockNews Desk</h1><span>${esc(subtitle ?? "Nhịp quyết định cho nhà đầu tư")}</span></div>
+        <div><h1>Tổng quan StockNews</h1><span>${esc(subtitle ?? "Nhịp quyết định cho nhà đầu tư")}</span></div>
       </a>
-      <nav class="deskNav" aria-label="Desk">
+      <nav class="deskNav" aria-label="Điều hướng bàn đầu tư">
         ${link("hub", "/desk", "Tổng quan")}
-        ${link("briefing", "/briefing", "Morning Brief")}
+        ${link("briefing", "/briefing", "Điểm tin sáng")}
         ${link("markets", "/markets", "Thị trường")}
-        ${link("portfolio", "/portfolio", "Portfolio")}
+        ${link("portfolio", "/portfolio", "Danh mục")}
         <a class="deskNavItem" href="/">Bản tin</a>
         ${sw}
       </nav>
@@ -199,7 +201,7 @@ export function renderInvestorHub(params: {
   const inner = `
     <div class="deskHero">
       <h2>Xin chào, nhà đầu tư.</h2>
-      <p>Một nơi để mở nhanh brief sáng, tâm lý thị trường, luân chuyển ngành và dòng tiền proxy — trước khi bạn đọc chi tiết từng tin.</p>
+      <p>Một nơi để mở nhanh điểm tin sáng, tâm lý thị trường, luân chuyển ngành và tín hiệu dòng tiền ước lượng — trước khi bạn đọc chi tiết từng tin.</p>
     </div>
     <div class="deskGrid">
       <div class="deskCard">
@@ -239,7 +241,7 @@ export function renderInvestorHub(params: {
         <a class="btn secondary" href="/markets#sectors" style="margin-top:14px;display:inline-flex;">Chi tiết sector</a>
       </div>
       <div class="deskCard">
-        <h3>Smart money (proxy)</h3>
+        <h3>Dòng tiền lớn (ước lượng)</h3>
         <p style="color:var(--muted);font-size:.82rem;margin:0 0 10px;">Top khối lượng HSX — không phải dữ liệu tick-by-tick.</p>
         <ul class="deskList">
           ${snap.smartMoney
@@ -251,15 +253,15 @@ export function renderInvestorHub(params: {
       </div>
     </div>
     <div style="margin-top:22px;display:flex;flex-wrap:wrap;gap:10px;">
-      <a class="btn" href="/briefing">Morning Brief đầy đủ</a>
-      <a class="btn secondary" href="${escAttr(portfolioDeskHref(reportDate, { prefill: "VNM,FPT,HPG" }))}">Cá nhân hóa Portfolio</a>
+      <a class="btn" href="/briefing">Xem đầy đủ điểm tin sáng</a>
+      <a class="btn secondary" href="${escAttr(portfolioDeskHref(reportDate, { prefill: "VNM,FPT,HPG" }))}">Cá nhân hóa danh mục</a>
     </div>
     <div class="deskCard" style="margin-top:22px;">
       <h3>Tổng quan AI (trích)</h3>
       <div class="prose">${esc(report.overviewVi).slice(0, 520)}${report.overviewVi.length > 520 ? "…" : ""}</div>
     </div>
   `;
-  return deskShell({ title: "Desk", nav: "hub", inner, subtitle: formatVietnamDateDisplay(`${reportDate}T12:00:00+07:00`), appearance, returnPath: "/desk" });
+  return deskShell({ title: "Tổng quan", nav: "hub", inner, subtitle: formatVietnamDateDisplay(`${reportDate}T12:00:00+07:00`), appearance, returnPath: "/desk" });
 }
 
 export function renderMorningBriefing(params: {
@@ -271,12 +273,12 @@ export function renderMorningBriefing(params: {
   const { reportDate, report, snap, appearance } = params;
   const inner = `
     <div class="deskHero">
-      <h2>Morning Briefing</h2>
+      <h2>Điểm tin sáng</h2>
       <p>Tóm tắt phiên &amp; luồng tin trong ngày ${esc(formatVietnamDateDisplay(`${reportDate}T12:00:00+07:00`))}. Cập nhật theo cron; không phải khuyến nghị mua/bán.</p>
     </div>
     <div class="deskGrid">
       <div class="deskCard" style="grid-column:1/-1;">
-        <h3>Executive summary</h3>
+        <h3>Tóm tắt điều hành</h3>
         <div class="prose">
           <p><strong>Tổng quan.</strong> ${esc(report.overviewVi)}</p>
           <p><strong>Outlook.</strong> ${esc(report.outlookVi)}</p>
@@ -301,9 +303,9 @@ export function renderMorningBriefing(params: {
         </ul>
       </div>
     </div>
-    <p style="margin-top:20px;color:var(--muted);font-size:.8rem;">This is not financial advice.</p>
+    <p style="margin-top:20px;color:var(--muted);font-size:.8rem;">Thông tin chỉ nhằm mục đích tham khảo, không phải khuyến nghị đầu tư.</p>
   `;
-  return deskShell({ title: "Morning Briefing", nav: "briefing", inner, appearance, returnPath: "/briefing" });
+  return deskShell({ title: "Điểm tin sáng", nav: "briefing", inner, appearance, returnPath: "/briefing" });
 }
 
 export function renderMarketsDesk(params: { reportDate: string; snap: InvestorDailySnapshot; appearance: Appearance }): string {
@@ -311,7 +313,7 @@ export function renderMarketsDesk(params: { reportDate: string; snap: InvestorDa
   const inner = `
     <div class="deskHero" id="fg">
       <h2>Thị trường &amp; dòng tiền</h2>
-      <p>Fear &amp; Greed heuristic, luân chuyển ngành và top khối lượng (proxy smart money).</p>
+      <p>Fear &amp; Greed theo mô hình ước lượng, luân chuyển ngành và top khối lượng (đại diện dòng tiền lớn).</p>
     </div>
     <div class="deskGrid">
       <div class="deskCard" style="grid-column:1/-1;">
@@ -336,8 +338,8 @@ export function renderMarketsDesk(params: { reportDate: string; snap: InvestorDa
           .join("")}
       </div>
       <div class="deskCard" id="flow" style="grid-column:1/-1;">
-        <h3>Smart money tracker (proxy)</h3>
-        <p style="color:var(--muted);font-size:.86rem;">Dữ liệu HSX public API — thể hiện mã được giao dịch mạnh, không phải lệnh khối ngoại chi tiết.</p>
+        <h3>Theo dõi dòng tiền lớn (ước lượng)</h3>
+        <p style="color:var(--muted);font-size:.86rem;">Dữ liệu từ API HSX công khai — phản ánh mã giao dịch mạnh, không phải dữ liệu lệnh chi tiết.</p>
         <ul class="deskList">
           ${snap.smartMoney
             .map((m) => `<li><strong>${esc(m.symbol)}</strong> — ${esc(m.volume)} — ${esc(m.ratioPct)}</li>`)
@@ -377,7 +379,7 @@ export function renderPortfolioDesk(params: {
 
   const onboardingBlock = showOnboarding
     ? `<div class="deskCard portfolioOnboarding">
-        <h3>Bắt đầu với Portfolio</h3>
+        <h3>Bắt đầu với danh mục theo dõi</h3>
         <p class="onboardingLead">
           Theo dõi tối đa <strong>18 mã</strong> trong cookie trình duyệt (không đăng nhập). Hệ thống lọc tin khi tiêu đề hoặc tóm tắt có nhắc đến mã (theo từ, không phải khuyến nghị mua/bán).
         </p>
@@ -400,7 +402,7 @@ export function renderPortfolioDesk(params: {
 
   const inner = `
     <div class="deskHero">
-      <h2>Portfolio mode</h2>
+      <h2>Chế độ danh mục</h2>
       <p>Lọc tin theo mã trong danh sách theo dõi (cookie trình duyệt, tối đa 18 mã). Không lưu tài khoản đăng nhập.</p>
     </div>
     ${onboardingBlock}
@@ -416,7 +418,7 @@ export function renderPortfolioDesk(params: {
       </div>
       <div class="deskCard" style="grid-column:1/-1;">
         <h3>Tin phù hợp ${symbols.length ? `(${articles.length} mục)` : "(chưa lọc — toàn bộ)"}</h3>
-        <p style="color:var(--muted);font-size:.82rem;">Ngày ${esc(reportDate)} · điểm hiển thị là proxy độ nổi bật, không phải khuyến nghị.</p>
+        <p style="color:var(--muted);font-size:.82rem;">Ngày ${esc(reportDate)} · điểm hiển thị là ước lượng mức độ nổi bật, không phải khuyến nghị.</p>
         <div style="overflow:auto;margin-top:10px;">
           <table style="width:100%;border-collapse:collapse;font-size:.88rem;">
             <thead><tr style="text-align:left;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;"><th style="padding:8px 6px;">Điểm</th><th style="padding:8px 6px;">Tiêu đề</th><th style="padding:8px 6px;">Nguồn</th></tr></thead>
@@ -432,14 +434,14 @@ export function renderPortfolioDesk(params: {
       mode: "portfolio"
     })}
   `;
-  return deskShell({ title: "Portfolio", nav: "portfolio", inner, appearance, returnPath: "/portfolio" });
+  return deskShell({ title: "Danh mục", nav: "portfolio", inner, appearance, returnPath: "/portfolio" });
 }
 
 export function renderIntelArchive(params: { dates: string[]; appearance: Appearance }): string {
   const { dates, appearance } = params;
   const inner = `
     <div class="deskHero">
-      <h2>Historical intelligence</h2>
+      <h2>Lưu trữ phân tích theo ngày</h2>
       <p>Mỗi phiên hệ thống lưu snapshot JSON trên R2 (nếu bucket ASSETS bật) và chỉ mục ngày trên KV. Dùng cho so sánh tâm lý / sector theo thời gian.</p>
     </div>
     <div class="deskCard" style="max-width:720px;">

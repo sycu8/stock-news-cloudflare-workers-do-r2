@@ -32,6 +32,12 @@ export function renderStockPage(insight: StockInsight, appearance: Appearance = 
 
   return `<!doctype html><html lang="vi" data-theme="${appearance}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${escapeHtml(insight.symbol)} - Phân tích cổ phiếu</title>
+  <meta name="description" content="Phân tích nhanh cổ phiếu ${escapeHtml(insight.symbol)}: sentiment, dòng tiền, biến động giá và tin liên quan." />
+  <link rel="canonical" href="${escapeHtml(returnPath)}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${escapeHtml(insight.symbol)} - Phân tích cổ phiếu" />
+  <meta property="og:description" content="Trang phân tích mã cổ phiếu theo dữ liệu tin tức thời gian thực." />
+  <meta name="twitter:card" content="summary" />
   ${themeFontLinks()}
   <style>
   ${themeSemanticVariablesBlock()}
@@ -47,6 +53,7 @@ export function renderStockPage(insight: StockInsight, appearance: Appearance = 
   .mentionCount{font-size:.84rem;color:var(--muted);font-weight:700}
   .chart svg{width:100%;height:auto;display:block}.legend{display:flex;justify-content:space-between;gap:8px;color:#475467;font-size:.85rem;margin-top:6px}
   .chip{display:inline-flex;padding:6px 10px;border-radius:999px;border:1px solid var(--border);margin:4px 6px 0 0;color:var(--primary);text-decoration:none}
+  button,a,input,select{min-height:var(--control-h);min-width:var(--control-h)}
   a{color:var(--primary);text-decoration:none}
   a:hover{text-decoration:underline}
   ul{margin:8px 0;padding-left:18px}

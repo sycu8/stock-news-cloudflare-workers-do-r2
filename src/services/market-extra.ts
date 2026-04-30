@@ -154,11 +154,9 @@ function normalizeGoldSnapshot(raw: Partial<GoldMarketSnapshot>): GoldMarketSnap
 
 async function fetchFxRange(pair: "usd_vnd" | "sgd_vnd" | "jpy_vnd" | "cny_vnd", range: FxRange): Promise<FxRatePoint[]> {
   const dates = buildDates(range);
-  const results: FxRatePoint[] = [];
-  for (const date of dates) {
-    const pt = await fetchFxPoint(date, pair);
-    if (pt) results.push(pt);
-  }
+  const results = (await Promise.all(dates.map((date) => fetchFxPoint(date, pair)))).filter(
+    (pt): pt is FxRatePoint => Boolean(pt)
+  );
   return results.sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -179,13 +177,13 @@ function buildDates(range: FxRange): string[] {
       push(d);
     }
   } else if (range === "1m") {
-    for (let i = 29; i >= 0; i -= 1) {
+    for (let i = 28; i >= 0; i -= 2) {
       const d = new Date(now);
       d.setUTCDate(d.getUTCDate() - i);
       push(d);
     }
   } else {
-    for (let i = 52; i >= 0; i -= 1) {
+    for (let i = 52; i >= 0; i -= 2) {
       const d = new Date(now);
       d.setUTCDate(d.getUTCDate() - i * 7);
       push(d);

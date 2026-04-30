@@ -113,7 +113,7 @@ function renderChartsHtml(input: {
       <div class="chartCard span2">
         <h3>Trọng số kịch bản (tham khảo)</h3>
         ${scenarioBars}
-        <p class="disclaimer"><strong>Disclaimer:</strong> This is not financial advice.</p>
+        <p class="disclaimer"><strong>Lưu ý:</strong> Nội dung chỉ nhằm mục đích tham khảo, không phải khuyến nghị đầu tư.</p>
       </div>
     </div>
   </div>

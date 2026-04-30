@@ -46,6 +46,8 @@ TELEGRAM_BOT_USERNAME = "stocknewsbyocbot"
 # Add CF_IMAGES_ACCOUNT_HASH in Cloudflare Worker vars/secrets to enable Hosted Images delivery URLs.
 CF_IMAGES_ACCOUNT_HASH = "N9GPD68IDHgBkqGwpbP3sNnv5LYKTKrH"
 CF_IMAGES_VARIANT = "public"
+# Optional: comma-separated seed URLs for AI Search crawl container.
+WEBSITE_CRAWL_SEEDS = "https://stocknews.orangecloud.vn/,https://stocknews.orangecloud.vn/briefing,https://stocknews.orangecloud.vn/calendar"
 # Optional RFC 9728: comma-separated HTTPS OAuth/OIDC issuer URLs (RFC 8414). When unset, metadata uses this worker’s origin.
 # OAUTH_AUTHORIZATION_SERVERS = "https://YOURTEAM.cloudflareaccess.com"
 # Optional: override advertised OAuth scopes (space or comma separated).
