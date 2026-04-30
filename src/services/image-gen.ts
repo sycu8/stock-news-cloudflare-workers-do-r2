@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { sha256Hex } from "../utils/sha256";
+import { workersAiGatewayOptions, workersAiImageModel } from "./ai-config";
 
 export async function ensureGeneratedThumbnail(params: {
   env: Env;
@@ -24,7 +25,7 @@ export async function ensureGeneratedThumbnail(params: {
   const negative =
     "text, watermark, logo, brand, low quality, blurry, distorted, ugly, nsfw, people, face, portrait, hands";
 
-  const model = "@cf/bytedance/stable-diffusion-xl-lightning";
+  const model = workersAiImageModel(env);
   const result = await env.AI.run(
     model,
     {
@@ -35,14 +36,7 @@ export async function ensureGeneratedThumbnail(params: {
       num_steps: 6,
       guidance: 6
     },
-    env.AI_GATEWAY_ID
-      ? {
-          gateway: {
-            id: env.AI_GATEWAY_ID,
-            skipCache: true
-          }
-        }
-      : undefined
+    workersAiGatewayOptions(env)
   );
 
   const bytes = await readAiImageBytes(result);

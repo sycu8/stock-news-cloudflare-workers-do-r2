@@ -1,6 +1,6 @@
 import { NEWS_SOURCES } from "./config/sources";
 import type { CrawlRunRecord, DailyReport, MediaItemRecord, NewsSourceRecord, NormalizedArticle, StoredArticle } from "./types";
-import { formatDateOnly } from "./utils/date";
+import { formatCalendarDateVietnam, vietnamReportDayUtcIsoRange } from "./utils/date";
 
 interface D1ResultRow {
   id: number;
@@ -112,9 +112,47 @@ export async function upsertArticle(db: D1Database, article: NormalizedArticle):
     .run();
 }
 
+/** Bài trong ngày báo có `published_at` lớn hơn `afterPublishedExclusive` (so sánh chuỗi ISO). */
+export async function listArticlesPublishedAfter(
+  db: D1Database,
+  reportDate: string,
+  afterPublishedExclusive: string,
+  limit: number
+): Promise<StoredArticle[]> {
+  const bounds = vietnamReportDayUtcIsoRange(reportDate);
+  if (!bounds) return [];
+  const { start, end } = bounds;
+  const cap = Math.min(Math.max(1, limit), 80);
+  const { results } = await db
+    .prepare(
+      `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
+       FROM articles
+       WHERE published_at BETWEEN ?1 AND ?2 AND published_at > ?3
+       ORDER BY published_at DESC
+       LIMIT ?4`
+    )
+    .bind(start, end, afterPublishedExclusive, cap)
+    .all<D1ResultRow>();
+
+  const list = results ?? [];
+  return list.map((row) => ({
+    id: row.id,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    title: row.title,
+    url: row.url,
+    publishedAt: row.published_at,
+    snippet: row.snippet ?? "",
+    contentLimited: row.content_limited === 1,
+    summaryVi: row.summary_vi,
+    imageUrl: row.image_url ?? null
+  }));
+}
+
 export async function getArticlesByDate(db: D1Database, reportDate: string): Promise<StoredArticle[]> {
-  const start = `${reportDate}T00:00:00.000Z`;
-  const end = `${reportDate}T23:59:59.999Z`;
+  const bounds = vietnamReportDayUtcIsoRange(reportDate);
+  if (!bounds) return [];
+  const { start, end } = bounds;
   const { results } = await db
     .prepare(
       `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
@@ -137,6 +175,22 @@ export async function getArticlesByDate(db: D1Database, reportDate: string): Pro
     summaryVi: row.summary_vi,
     imageUrl: row.image_url ?? null
   }));
+}
+
+/** Recent articles for sitemap URLs (canonical `/article` links). */
+export async function listRecentArticlesForSitemap(db: D1Database, limit: number): Promise<Array<{ url: string; publishedAt: string }>> {
+  const cap = Math.min(Math.max(1, limit), 4000);
+  const { results } = await db
+    .prepare(
+      `SELECT url, published_at
+       FROM articles
+       ORDER BY published_at DESC
+       LIMIT ?1`
+    )
+    .bind(cap)
+    .all<{ url: string; published_at: string }>();
+  const rows = results ?? [];
+  return rows.map((row) => ({ url: row.url, publishedAt: row.published_at }));
 }
 
 export async function getArticleByUrl(db: D1Database, url: string): Promise<StoredArticle | null> {
@@ -173,8 +227,11 @@ export async function getArticlesByDatePaged(params: {
   q?: string;
 }): Promise<{ total: number; articles: StoredArticle[] }> {
   const { db, reportDate, limit, offset, sourceFilter, q } = params;
-  const start = `${reportDate}T00:00:00.000Z`;
-  const end = `${reportDate}T23:59:59.999Z`;
+  const bounds = vietnamReportDayUtcIsoRange(reportDate);
+  if (!bounds) {
+    return { total: 0, articles: [] };
+  }
+  const { start, end } = bounds;
   const source = sourceFilter?.trim().toLowerCase() ?? "";
   const query = q?.trim().toLowerCase() ?? "";
 
@@ -239,8 +296,9 @@ export async function listArticlesNeedingEnrichment(
   reportDate: string,
   limit = 12
 ): Promise<StoredArticle[]> {
-  const start = `${reportDate}T00:00:00.000Z`;
-  const end = `${reportDate}T23:59:59.999Z`;
+  const bounds = vietnamReportDayUtcIsoRange(reportDate);
+  if (!bounds) return [];
+  const { start, end } = bounds;
   const { results } = await db
     .prepare(
       `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
@@ -400,7 +458,7 @@ export async function getDailyReport(db: D1Database, reportDate: string): Promis
 }
 
 export function getTodayDateKey(): string {
-  return formatDateOnly(new Date());
+  return formatCalendarDateVietnam(new Date());
 }
 
 export async function ensureDefaultSources(db: D1Database): Promise<void> {
@@ -698,6 +756,32 @@ export async function getMediaItemsByDate(db: D1Database, reportDate: string, li
     summaryVi: row.summary_vi ?? "",
     imageUrl: row.image_url
   }));
+}
+
+/** Single media row by canonical URL (for AI Explain on brief/media cards). */
+export async function getMediaItemByUrl(db: D1Database, url: string): Promise<MediaItemRecord | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, kind, source_id, source_name, title, url, published_at, report_date, summary_vi, image_url
+       FROM media_items
+       WHERE url = ?1
+       LIMIT 1`
+    )
+    .bind(url)
+    .first<MediaItemRow>();
+  if (!row) return null;
+  return {
+    id: row.id,
+    kind: row.kind,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    title: row.title,
+    url: row.url,
+    publishedAt: row.published_at,
+    reportDate: row.report_date,
+    summaryVi: row.summary_vi ?? "",
+    imageUrl: row.image_url
+  };
 }
 
 function mapNewsSourceRow(row: NewsSourceRow): NewsSourceRecord {

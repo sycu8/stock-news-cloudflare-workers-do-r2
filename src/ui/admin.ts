@@ -1,10 +1,12 @@
 import type { CrawlRunRecord, NewsSourceRecord, StoredArticle } from "../types";
+import { themeAppearanceSwitcher, themeFontLinks, themeSemanticVariablesBlock, type Appearance } from "./theme";
 
 interface AdminPageParams {
   sources: NewsSourceRecord[];
   runs: CrawlRunRecord[];
   manualArticles: StoredArticle[];
   message?: string;
+  appearance: Appearance;
 }
 
 interface AdminDashboardParams {
@@ -17,29 +19,34 @@ interface AdminDashboardParams {
   imagesHostedConfigured: boolean;
   imagesVariant: string;
   message?: string;
+  appearance: Appearance;
 }
 
-export function renderAdminLoginPage({ message }: { message?: string }): string {
+export function renderAdminLoginPage({ message, appearance }: { message?: string; appearance: Appearance }): string {
+  const sw = themeAppearanceSwitcher(appearance, "/admin/login");
   return `<!doctype html>
-<html lang="vi">
+<html lang="vi" data-theme="${appearance}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Login</title>
+    <title>Đăng nhập quản trị</title>
+    ${themeFontLinks()}
     <style>
-      body { font-family: Inter, Arial, sans-serif; margin: 0; background: #f4f6fb; padding: 16px; color: #101828; }
-      .card { max-width: 520px; margin: 48px auto; background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 6px 24px rgba(16,24,40,.06); }
+      ${themeSemanticVariablesBlock()}
+      .adminLoginTop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; max-width: 520px; margin-left: auto; margin-right: auto; }
+      .card { max-width: 520px; margin: 0 auto 48px; background: var(--surface); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); border:1px solid var(--border); }
       h1 { margin: 0 0 8px; font-size: 1.3rem; }
-      p { margin: 0 0 14px; color: #475467; }
+      p { margin: 0 0 14px; color: var(--muted); }
       input, button { width: 100%; padding: 12px; border-radius: 12px; font: inherit; }
-      input { border: 1px solid #d0d5dd; margin: 10px 0 12px; }
-      button { border: 0; background: #155eef; color: #fff; cursor: pointer; }
+      input { border: 1px solid var(--border); margin: 10px 0 12px; background: var(--surface2); color: var(--text); }
+      button { border: 0; background: var(--primary); color: #fff; cursor: pointer; font-weight:700; }
       .notice { background: #ecfdf3; color: #027a48; border: 1px solid #abefc6; padding: 10px 12px; border-radius: 12px; margin-top: 12px; }
     </style>
   </head>
-  <body>
+  <body class="appBody">
+    <div class="adminLoginTop" style="padding:16px 16px 0"><p style="margin:0"><a href="/">← Trang chủ</a></p>${sw}</div>
     <main class="card">
-      <h1>Admin token required</h1>
+      <h1>Cần token quản trị</h1>
       <p>Nhập token để truy cập trang quản trị.</p>
       ${message ? `<div class="notice">${escapeHtml(message)}</div>` : ""}
       <form method="POST" action="/admin/login">
@@ -60,24 +67,28 @@ export function renderAdminDashboardPage({
   telegramConfigured,
   imagesHostedConfigured,
   imagesVariant,
-  message
+  message,
+  appearance
 }: AdminDashboardParams): string {
+  const sw = themeAppearanceSwitcher(appearance, "/admin");
   return `<!doctype html>
-<html lang="vi">
+<html lang="vi" data-theme="${appearance}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Dashboard</title>
+    <title>Bảng điều khiển quản trị</title>
+    ${themeFontLinks()}
     <style>
-      body { font-family: Inter, Arial, sans-serif; margin: 0; background: #f4f6fb; color: #101828; }
+      ${themeSemanticVariablesBlock()}
+      .adminDashTop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
       .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
-      .hero, .panel, .card { background: #fff; border-radius: 16px; box-shadow: 0 6px 24px rgba(16,24,40,.06); }
+      .hero, .panel, .card { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); border:1px solid var(--border); }
       .hero { padding: 20px; margin-bottom: 16px; }
       .hero h1, .panel h2 { margin: 0 0 8px; }
       .panel { padding: 16px; margin-bottom: 16px; }
       .stats, .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-      .card { padding: 16px; border: 1px solid #eaecf0; }
-      .meta { color: #475467; font-size: .92rem; margin: 6px 0 0; }
+      .card { padding: 16px; }
+      .meta { color: var(--muted); font-size: .92rem; margin: 6px 0 0; }
       .value { font-size: 1.8rem; font-weight: 700; margin: 6px 0; }
       .notice { background: #ecfdf3; color: #027a48; border: 1px solid #abefc6; padding: 10px 12px; border-radius: 12px; margin-top: 12px; }
       .badge { display: inline-block; border-radius: 999px; padding: 6px 10px; font-size: .85rem; font-weight: 600; }
@@ -87,7 +98,7 @@ export function renderAdminDashboardPage({
       .linkCard h3 { margin: 0 0 6px; }
       .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .inlineActions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-      button, .actionLink { font: inherit; border: 0; border-radius: 12px; padding: 10px 14px; background: #155eef; color: #fff; text-decoration: none; display: inline-block; }
+      button, .actionLink { font: inherit; border: 0; border-radius: 12px; padding: 10px 14px; background: var(--primary); color: #fff; text-decoration: none; display: inline-block; font-weight:700; }
       .actionLink.secondary { background: #344054; }
       @media (max-width: 640px) {
         .container { padding: 12px; }
@@ -95,10 +106,11 @@ export function renderAdminDashboardPage({
       }
     </style>
   </head>
-  <body>
+  <body class="appBody">
     <main class="container">
+      <div class="adminDashTop"><p style="margin:0"><a href="/">← Trang chủ</a></p>${sw}</div>
       <section class="hero">
-        <h1>Admin Dashboard</h1>
+        <h1>Bảng điều khiển quản trị</h1>
         <p class="meta">Điểm vào quản trị nhanh cho nguồn tin, bài viết thủ công, thông báo, status và cấu hình ảnh.</p>
         <div class="inlineActions">
           <a class="actionLink" href="/admin/sources">Mở CMS nguồn tin</a>
@@ -170,7 +182,7 @@ export function renderAdminDashboardPage({
             <p class="meta">Kiểm tra bot, deep link và trạng thái subscriber.</p>
           </a>
           <a class="card linkCard" href="/status">
-            <h3>Status</h3>
+            <h3>Trạng thái</h3>
             <p class="meta">Xem health feed, AI summarizer và nhịp cập nhật hệ thống.</p>
           </a>
         </div>
@@ -180,7 +192,8 @@ export function renderAdminDashboardPage({
 </html>`;
 }
 
-export function renderAdminSourcesPage({ sources, runs, manualArticles, message }: AdminPageParams): string {
+export function renderAdminSourcesPage({ sources, runs, manualArticles, message, appearance }: AdminPageParams): string {
+  const sw = themeAppearanceSwitcher(appearance, "/admin/sources");
   const renderSourceCard = (source: NewsSourceRecord) => `
       <article class="card">
         <div class="row top">
@@ -292,15 +305,17 @@ export function renderAdminSourcesPage({ sources, runs, manualArticles, message 
     .join("");
 
   return `<!doctype html>
-<html lang="vi">
+<html lang="vi" data-theme="${appearance}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Quản trị nguồn tin</title>
+    ${themeFontLinks()}
     <style>
-      body { font-family: Inter, Arial, sans-serif; margin: 0; background: #f4f6fb; color: #101828; }
+      ${themeSemanticVariablesBlock()}
+      .adminSrcTop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
       .container { max-width: 1080px; margin: 0 auto; padding: 16px; }
-      .hero, .panel, .card { background: #fff; border-radius: 16px; box-shadow: 0 6px 24px rgba(16,24,40,.06); }
+      .hero, .panel, .card { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); border:1px solid var(--border); }
       .hero { padding: 18px; margin-bottom: 16px; }
       .hero h1 { margin: 0 0 8px; font-size: 1.35rem; }
       .hero p, .panel p, .card p { margin: 6px 0; }
@@ -310,11 +325,11 @@ export function renderAdminSourcesPage({ sources, runs, manualArticles, message 
       .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
       .sourceGroup { display:grid; gap: 12px; margin-top: 14px; }
       .sourceGroup:first-child { margin-top: 0; }
-      .card { padding: 14px; border: 1px solid #eaecf0; }
+      .card { padding: 14px; }
       .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
       .top { align-items: start; }
       .stack { display: grid; gap: 4px; margin-top: 10px; }
-      .meta, .hint, .defaultTag { color: #475467; font-size: .9rem; }
+      .meta, .hint, .defaultTag { color: var(--muted); font-size: .9rem; }
       .badge { border-radius: 999px; padding: 6px 10px; font-size: .85rem; font-weight: 600; }
       .badge.ok { background: #ecfdf3; color: #027a48; }
       .badge.off { background: #f2f4f7; color: #344054; }
@@ -322,9 +337,9 @@ export function renderAdminSourcesPage({ sources, runs, manualArticles, message 
       .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
       label { display: grid; gap: 6px; font-size: .95rem; }
       input, select, textarea, button { font: inherit; }
-      input, select, textarea { border: 1px solid #d0d5dd; border-radius: 12px; padding: 10px 12px; background: #fff; }
+      input, select, textarea { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--surface2); color: var(--text); }
       textarea { min-height: 96px; resize: vertical; }
-      button { border: 0; border-radius: 12px; padding: 10px 14px; background: #155eef; color: #fff; cursor: pointer; }
+      button { border: 0; border-radius: 12px; padding: 10px 14px; background: var(--primary); color: #fff; cursor: pointer; font-weight:700; }
       button.danger { background: #d92d20; }
       .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
       .inlineActions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
@@ -341,8 +356,9 @@ export function renderAdminSourcesPage({ sources, runs, manualArticles, message 
       }
     </style>
   </head>
-  <body>
+  <body class="appBody">
     <main class="container">
+      <div class="adminSrcTop"><p style="margin:0"><a href="/admin">← Dashboard</a></p>${sw}</div>
       <section class="hero">
         <h1>CMS nguồn tin và bài viết</h1>
         <p>Thêm <code>feed_url</code>, nhập bài viết thủ công, bật/tắt nguồn và theo dõi các lần crawl gần nhất.</p>

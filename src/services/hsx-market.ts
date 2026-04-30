@@ -3,6 +3,7 @@ import { formatDateOnly } from "../utils/date";
 
 const TOP_CACHE_KEY = "hsx:top-volume";
 const CHART_CACHE_KEY_PREFIX = "hsx:vnindex";
+const STOCK_CHART_CACHE_KEY_PREFIX = "hsx:stock-chart";
 
 export async function getHSXMarketSnapshot(env: Env): Promise<HSXMarketSnapshot | null> {
   const [topVolume, vnindex1W, vnindex1M, vnindex1Y] = await Promise.all([
@@ -50,7 +51,26 @@ async function getTopVolume(env: Env): Promise<HSXTopVolumeItem[]> {
 }
 
 async function getVNIndexRange(env: Env, range: "1w" | "1m" | "1y"): Promise<HSXVNIndexPoint[]> {
-  const cached = await env.CACHE.get(`${CHART_CACHE_KEY_PREFIX}:${range}`, "json");
+  return getChartRange(env, "VNINDEX", range, CHART_CACHE_KEY_PREFIX);
+}
+
+export async function getStockChartRange(
+  env: Env,
+  symbolRaw: string,
+  range: "1w" | "1m" | "1y"
+): Promise<HSXVNIndexPoint[]> {
+  const symbol = symbolRaw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  if (!symbol) return [];
+  return getChartRange(env, symbol, range, `${STOCK_CHART_CACHE_KEY_PREFIX}:${symbol}`);
+}
+
+async function getChartRange(
+  env: Env,
+  symbol: string,
+  range: "1w" | "1m" | "1y",
+  cacheKeyPrefix: string
+): Promise<HSXVNIndexPoint[]> {
+  const cached = await env.CACHE.get(`${cacheKeyPrefix}:${range}`, "json");
   if (Array.isArray(cached)) return cached as HSXVNIndexPoint[];
 
   try {
@@ -62,12 +82,12 @@ async function getVNIndexRange(env: Env, range: "1w" | "1m" | "1y"): Promise<HSX
     const qs = new URLSearchParams({
       fromDate: formatDateOnly(from),
       toDate: formatDateOnly(today),
-      symbolString: "VNINDEX|"
+      symbolString: `${symbol}|`
     });
     const resp = await fetch(`https://api.hsx.vn/mk/api/v1/market/basic-chart?${qs.toString()}`, {
       headers: hsxHeaders()
     });
-    if (!resp.ok) throw new Error(`HSX VNINDEX ${range} failed: ${resp.status}`);
+    if (!resp.ok) throw new Error(`HSX ${symbol} ${range} failed: ${resp.status}`);
     const body = (await resp.json()) as {
       success?: boolean;
       data?: Array<{
@@ -87,12 +107,12 @@ async function getVNIndexRange(env: Env, range: "1w" | "1m" | "1y"): Promise<HSX
           .map((p) => toChartPoint(p))
           .filter((p): p is HSXVNIndexPoint => p !== null)
       : [];
-    await env.CACHE.put(`${CHART_CACHE_KEY_PREFIX}:${range}`, JSON.stringify(points), {
+    await env.CACHE.put(`${cacheKeyPrefix}:${range}`, JSON.stringify(points), {
       expirationTtl: range === "1w" ? 60 * 15 : range === "1m" ? 60 * 30 : 60 * 60 * 4
     });
     return points;
   } catch (error) {
-    console.error(`HSX VNINDEX ${range} fetch failed:`, error);
+    console.error(`HSX ${symbol} ${range} fetch failed:`, error);
     return [];
   }
 }

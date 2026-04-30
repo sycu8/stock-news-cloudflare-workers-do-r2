@@ -41,8 +41,9 @@ A production-ready Vietnam stock market news website running on Cloudflare Worke
   - KV: cached payload, view counters, report history snapshots
   - R2: logo/fallback assets/AI-generated thumbnails
 - AI:
-  - Workers AI (`env.AI`) for summarization/image generation
-  - OpenAI as fallback when `OPENAI_API_KEY` is provided
+  - Workers AI (`env.AI`) for summarization, explain, and image generation; optional **AI Gateway** on `AI.run` when `AI_GATEWAY_ID` is set
+  - OpenAI for fallback text and translations; optional routing via **AI Gateway** when `AI_GATEWAY_ACCOUNT_ID` + `AI_GATEWAY_ID` + `CF_AIG_TOKEN` are configured (`src/services/ai-config.ts`)
+  - Per-task model env vars (Workers + OpenAI) — see Environment Variables
 
 ## Image delivery (Cloudflare)
 
@@ -143,12 +144,17 @@ In `.dev.vars`:
 
 - `ADMIN_REFRESH_TOKEN` (required)
 - `OPENAI_API_KEY` (optional)
-- `OPENAI_MODEL` (default: `gpt-5.5`)
+- `OPENAI_MODEL` (default: `gpt-5.5`) — base model when task-specific overrides are unset
+- **Optional per-task OpenAI models**: `OPENAI_MODEL_SUMMARY` (article + daily report text), `OPENAI_MODEL_EXPLAIN` (`/api/news/explain`), `OPENAI_MODEL_TRANSLATE` (EN strings on the site)
+- **Optional AI Gateway** (analytics, caching, rate limits): set `AI_GATEWAY_ID` + `AI_GATEWAY_ACCOUNT_ID` (same hex as `account_id` in `wrangler.toml`) in `[vars]`, then `CF_AIG_TOKEN` in secrets. OpenAI `fetch` targets `https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/openai/chat/completions` per [OpenAI provider routing](https://developers.cloudflare.com/ai-gateway/usage/providers/openai/). Workers `AI.run` also receives `gateway: { id }` when `AI_GATEWAY_ID` is set.
+- **Optional Workers AI overrides**: `WORKERS_AI_MODEL_SUMMARY`, `WORKERS_AI_MODEL_EXPLAIN` (defaults to summary model if unset), `WORKERS_AI_MODEL_IMAGE` (thumbnail generation; default SDXL Lightning)
+- `AI_GATEWAY_SKIP_CACHE`: set to `false` to allow gateway-side cache on Workers AI runs (default skips cache)
 
 Set production secrets:
 
 - `npx wrangler secret put ADMIN_REFRESH_TOKEN`
 - `npx wrangler secret put OPENAI_API_KEY`
+- `npx wrangler secret put CF_AIG_TOKEN` (optional; AI Gateway authenticated requests)
 
 Current key bindings in `wrangler.toml`:
 
@@ -168,6 +174,15 @@ Current key bindings in `wrangler.toml`:
 - `POST /api/rum`: accepts JSON beacon from the homepage (structured logs); used for metrics experiments.
 - `GET /rss/today`: RSS 2.0 feed for today (cache-friendly headers).
 - `GET /health`: JSON liveness probe for uptime monitors.
+- `GET /robots.txt`: crawl policy; references the sitemap URL for the current host.
+- `GET /sitemap.xml`: XML sitemap ([Sitemaps.org protocol](https://www.sitemaps.org/protocol.html)) with canonical public URLs (homepage, key pages, recent articles, HSX top-volume symbols); regenerated on each request from D1 + live market snapshot so new articles appear after crawl.
+- `GET /`: homepage includes a [`Link` header (RFC 8288)](https://www.rfc-editor.org/rfc/rfc8288) for agent discovery (`api-catalog`, `service-doc`, `service-desc`, `describedby`).
+- `GET /.well-known/api-catalog`: [RFC 9727](https://www.rfc-editor.org/rfc/rfc9727) API catalog as `application/linkset+json` (profile `https://www.rfc-editor.org/info/rfc9727`). The top-level `linkset` array has **one object per public API**; each object sets `anchor` to that API’s URL and includes `service-desc` (shared `openapi.json`), `service-doc` (`/docs/api#…`), and `status` (`/health`). `HEAD` uses the same `Content-Type` and `Link` header (Section 2).
+- `GET /.well-known/oauth-protected-resource`: [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) OAuth protected resource metadata (`application/json`). Includes `resource` (this host’s HTTPS origin), `authorization_servers` (defaults to the same origin so it pairs with `/.well-known/oauth-authorization-server`; override with Worker var `OAUTH_AUTHORIZATION_SERVERS` as comma-separated issuer URLs), `scopes_supported`, and `bearer_methods_supported`. Some JSON `401` admin responses include `WWW-Authenticate: Bearer resource_metadata="…"` (RFC 9728 §5).
+- `GET /.well-known/openid-configuration` / `GET /.well-known/oauth-authorization-server` / `GET /.well-known/jwks.json`: discovery stubs for the same-host “issuer” (token and authorize endpoints return `501` until a real OAuth deployment is wired).
+- `GET /docs/api`: short human-readable list of public APIs.
+- **WebMCP** ([spec](https://webmachinelearning.github.io/webmcp/)): the home page registers `navigator.modelContext.registerTool()` tools at the end of the document (with retries for late `modelContext`), including navigation, `/api/news/today` fetch, scroll targets, and AI Explain.
+- `GET /openapi.json`: minimal OpenAPI 3.1 document for public read endpoints.
 - `POST /admin/refresh`: manually trigger refresh (`x-admin-token` header).
 - `GET /admin/sources?token=<ADMIN_REFRESH_TOKEN>`: source management UI.
 - `POST /admin/sources`: add source (`rss` or `html_list`).
@@ -194,8 +209,14 @@ Current key bindings in `wrangler.toml`:
    - `/api/news/today`
    - `/img?u=<encoded-https-url-of-a-tiny-test-image>&w=64&q=80` (expect `image/*` response)
    - `/health`
+   - `/robots.txt` and `/sitemap.xml` (expect 200)
    - `/rss/today`
    - `/admin/sources?token=...`
+
+### Crawling / SEO
+
+- After deploy, confirm `https://<your-domain>/sitemap.xml` returns XML (HTTP 200) and lists public URLs.
+- **`/robots.txt` must point at that sitemap** (`Sitemap: https://<your-domain>/sitemap.xml`). If `/robots.txt` on a custom domain shows unrelated boilerplate and not the `Sitemap:` line above, another Cloudflare setting or route may be serving `robots.txt` before this Worker; route the hostname to this Worker or remove the conflicting `robots.txt` source so crawlers see our file.
 
 ## CI (GitHub Actions)
 

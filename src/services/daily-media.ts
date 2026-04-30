@@ -2,7 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { MEDIA_SOURCES } from "../config/sources";
 import { getMediaItemsByDate, upsertMediaItem } from "../db";
 import type { Env, MediaItemRecord, StoredArticle } from "../types";
-import { formatDateOnly, toIsoOrNow } from "../utils/date";
+import { formatCalendarDateVietnam, toIsoOrNow } from "../utils/date";
 import { stripHtml, truncate } from "../utils/text";
 import { fetchAndExtractSource } from "./source-extract";
 import { ensureGeneratedThumbnail } from "./image-gen";
@@ -103,7 +103,7 @@ async function fetchMediaSourcesForDate(reportDate: string): Promise<MediaItemRe
         return items
           .map((item) => normalizeMediaItem(source.id, source.name, source.type, reportDate, item))
           .filter((item): item is MediaItemRecord => item !== null)
-          .filter((item) => formatDateOnly(item.publishedAt) === reportDate)
+          .filter((item) => formatCalendarDateVietnam(item.publishedAt) === reportDate)
           .slice(0, 8);
       } catch {
         return [];

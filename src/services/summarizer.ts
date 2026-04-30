@@ -1,5 +1,16 @@
 import type { DailyReport, Env, StoredArticle } from "../types";
 import { truncate } from "../utils/text";
+import { isVietnamPublicHoliday, neutralHolidayDailyOverviewCopy } from "./vietnam-holidays";
+import {
+  maxTokensForTextPurpose,
+  openAiChatCompletionsUrl,
+  openAiChatModel,
+  openAiChatRequestHeaders,
+  textInferenceOrder,
+  workersAiGatewayOptions,
+  workersAiTextModel,
+  type TextAiPurpose
+} from "./ai-config";
 
 export async function summarizeArticle(article: StoredArticle, env: Env): Promise<string> {
   const limitedTag = article.contentLimited
@@ -41,6 +52,11 @@ export async function summarizeDailyOverview(
   articles: StoredArticle[],
   env: Env
 ): Promise<DailyReport> {
+  if (articles.length === 0 && isVietnamPublicHoliday(reportDate)) {
+    const copy = neutralHolidayDailyOverviewCopy(reportDate);
+    return { reportDate, ...copy, articleCount: 0 };
+  }
+
   const compact = articles
     .slice(0, 30)
     .map((a, idx) => `${idx + 1}. [${a.sourceName}] ${a.title} | ${truncate(a.summaryVi ?? a.snippet, 180)}`)
@@ -75,6 +91,25 @@ export async function summarizeDailyOverview(
   };
 }
 
+export async function explainNewsImpact(
+  article: Pick<StoredArticle, "title" | "sourceName" | "snippet" | "summaryVi" | "url">,
+  env: Env,
+  marketContext?: string
+): Promise<string> {
+  const prompt = [
+    "Giải thích nhanh tác động của tin tức lên giá cổ phiếu bằng tiếng Việt, 4-6 gạch đầu dòng ngắn.",
+    "Tập trung vào: cơ chế tác động, nhóm ngành/mã hưởng lợi hoặc chịu áp lực, rủi ro cần theo dõi, khung thời gian ngắn hạn.",
+    "Không đưa khuyến nghị mua/bán. Không bịa dữ liệu ngoài nội dung cho trước.",
+    marketContext ? `Bối cảnh thị trường: ${marketContext}` : "",
+    `Tiêu đề: ${article.title}`,
+    `Nguồn: ${article.sourceName}`,
+    `URL: ${article.url}`,
+    `Tóm tắt: ${truncate(article.summaryVi ?? "", 500)}`,
+    `Nội dung trích: ${truncate(article.snippet ?? "", 1200)}`
+  ].join("\n");
+  return runSummarizationPrompt(prompt, env, fallbackExplain(article), "explain");
+}
+
 /** Remove model echoes of instruction preambles (keep only the actual summary). */
 function stripSummaryPreamble(text: string): string {
   let t = text.trim();
@@ -93,32 +128,30 @@ function stripSummaryPreamble(text: string): string {
   return t;
 }
 
-async function runSummarizationPrompt(prompt: string, env: Env, fallback: string): Promise<string> {
-  // Prefer Workers AI when available (no API key needed).
-  if (env.AI) {
+async function runSummarizationPrompt(
+  prompt: string,
+  env: Env,
+  fallback: string,
+  purpose: TextAiPurpose = "summary"
+): Promise<string> {
+  const systemContent =
+    "Bạn là trợ lý tổng hợp tin chứng khoán. Không đưa lời khuyên đầu tư. Không bịa thêm dữ liệu. Luôn viết tiếng Việt có dấu khi được yêu cầu.";
+
+  const tryWorkers = async (): Promise<string | null> => {
+    if (!env.AI) return null;
     try {
-      const model = env.WORKERS_AI_MODEL_SUMMARY ?? "@cf/meta/llama-3.1-8b-instruct-fast";
+      const model = workersAiTextModel(env, purpose);
+      const gatewayOpts = workersAiGatewayOptions(env);
       const res = await env.AI.run(
         model,
         {
           messages: [
-            {
-              role: "system",
-              content:
-                "Bạn là trợ lý tổng hợp tin chứng khoán. Không đưa lời khuyên đầu tư. Không bịa thêm dữ liệu. Luôn viết tiếng Việt có dấu khi được yêu cầu."
-            },
+            { role: "system", content: systemContent },
             { role: "user", content: prompt }
           ],
-          max_tokens: 420
+          max_tokens: maxTokensForTextPurpose(purpose)
         },
-        env.AI_GATEWAY_ID
-          ? {
-              gateway: {
-                id: env.AI_GATEWAY_ID,
-                skipCache: true
-              }
-            }
-          : undefined
+        gatewayOpts
       );
 
       const text =
@@ -131,51 +164,50 @@ async function runSummarizationPrompt(prompt: string, env: Env, fallback: string
     } catch (error) {
       console.error("Workers AI summarization failed:", error);
     }
-  }
+    return null;
+  };
 
-  if (!env.OPENAI_API_KEY) {
-    return fallback;
-  }
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: env.OPENAI_MODEL ?? "gpt-4o-mini",
-        temperature: 0.2,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Bạn là trợ lý tổng hợp tin chứng khoán. Không đưa lời khuyên đầu tư. Không bịa thêm dữ liệu. Luôn viết tiếng Việt có dấu khi được yêu cầu."
-          },
-          { role: "user", content: prompt }
-        ]
-      })
-    });
+  const tryOpenAi = async (): Promise<string | null> => {
+    if (!env.OPENAI_API_KEY) return null;
+    try {
+      const response = await fetch(openAiChatCompletionsUrl(env), {
+        method: "POST",
+        headers: openAiChatRequestHeaders(env),
+        body: JSON.stringify({
+          model: openAiChatModel(env, purpose),
+          temperature: 0.2,
+          max_tokens: maxTokensForTextPurpose(purpose),
+          messages: [
+            { role: "system", content: systemContent },
+            { role: "user", content: prompt }
+          ]
+        })
+      });
 
-    if (!response.ok) {
-      console.error("OpenAI response error:", response.status, await response.text());
-      return fallback;
+      if (!response.ok) {
+        console.error("OpenAI response error:", response.status, await response.text());
+        return null;
+      }
+
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const raw = data.choices?.[0]?.message?.content?.trim();
+      if (!raw) return null;
+      const stripped = stripSummaryPreamble(raw);
+      if (!stripped) return null;
+      return truncate(stripped, 1200);
+    } catch (error) {
+      console.error("OpenAI summarization failed:", error);
+      return null;
     }
+  };
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = data.choices?.[0]?.message?.content?.trim();
-    if (!raw) {
-      return fallback;
-    }
-    const stripped = stripSummaryPreamble(raw);
-    if (!stripped) return fallback;
-    return truncate(stripped, 1200);
-  } catch (error) {
-    console.error("OpenAI summarization failed:", error);
-    return fallback;
+  for (const backend of textInferenceOrder(env, purpose)) {
+    const out = backend === "workers" ? await tryWorkers() : await tryOpenAi();
+    if (out) return out;
   }
+  return fallback;
 }
 
 function fallbackArticleSummary(article: StoredArticle): string {
@@ -203,6 +235,16 @@ function fallbackOutlook(articles: StoredArticle[]): string {
 
 function fallbackAssumptions(_articles: StoredArticle[]): string {
   return "Dòng tiền duy trì ở nhóm dẫn dắt; Thông tin doanh nghiệp không xấu hơn kỳ vọng; Môi trường vĩ mô và tỷ giá không xuất hiện biến động bất lợi đột ngột";
+}
+
+function fallbackExplain(article: Pick<StoredArticle, "title" | "snippet" | "summaryVi">): string {
+  const base = truncate(`${article.summaryVi ?? article.snippet ?? article.title}`, 360);
+  return [
+    "- Tác động trực tiếp phụ thuộc mức độ bất ngờ của thông tin so với kỳ vọng hiện tại.",
+    "- Nhóm cổ phiếu liên quan có thể biến động mạnh hơn thị trường chung trong ngắn hạn.",
+    "- Theo dõi phản ứng của thanh khoản và dòng tiền trong 1-3 phiên kế tiếp.",
+    `- Nội dung trọng tâm: ${base}`
+  ].join("\n");
 }
 
 // Disclaimer is rendered in the UI (non-financial advice section).

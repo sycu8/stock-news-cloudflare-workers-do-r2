@@ -1,5 +1,11 @@
 import type { Env } from "../types";
 import { sha256Hex } from "../utils/sha256";
+import {
+  maxTokensForTextPurpose,
+  openAiChatCompletionsUrl,
+  openAiChatModel,
+  openAiChatRequestHeaders
+} from "./ai-config";
 
 const DISCLAIMER_PHRASE = "This is not financial advice.";
 
@@ -71,15 +77,13 @@ async function translateBatchWithOpenAI(env: Env, texts: string[]): Promise<stri
   const mappingDisclaimer = texts.map((t) => hasDisclaimer(t));
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(openAiChatCompletionsUrl(env), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`
-      },
+      headers: openAiChatRequestHeaders(env),
       body: JSON.stringify({
-        model: env.OPENAI_MODEL ?? "gpt-4o-mini",
+        model: openAiChatModel(env, "translate"),
         temperature: 0.2,
+        max_tokens: maxTokensForTextPurpose("translate"),
         messages: [
           {
             role: "system",

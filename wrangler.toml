@@ -23,8 +23,22 @@ bucket_name = "vn-market-assets"
 preview_bucket_name = "vn-market-assets-preview"
 
 [vars]
-# Set this to an OpenAI model you have access to (e.g. "gpt-5.5").
+# Default OpenAI model when task-specific OPENAI_MODEL_* vars are unset (summarize, explain fallback, translate).
 OPENAI_MODEL = "gpt-5.5"
+# Optional: route OpenAI chat through AI Gateway — set gateway slug + same Cloudflare account_id as above, then `wrangler secret put CF_AIG_TOKEN` (AI Gateway token with Run permission).
+# AI_GATEWAY_ID = "your-gateway-name"
+# AI_GATEWAY_ACCOUNT_ID = "4c15704ef706b9c8954cd6f9feb678d8"
+# AI_GATEWAY_SKIP_CACHE = "false"
+# Per-task Workers AI models (see src/services/ai-config.ts)
+# WORKERS_AI_MODEL_SUMMARY = "@cf/meta/llama-3.1-8b-instruct-fast"
+# WORKERS_AI_MODEL_EXPLAIN = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+# WORKERS_AI_MODEL_IMAGE = "@cf/bytedance/stable-diffusion-xl-lightning"
+# Per-task OpenAI models (optional overrides of OPENAI_MODEL)
+# OPENAI_MODEL_SUMMARY = "gpt-4o-mini"
+# OPENAI_MODEL_EXPLAIN = "gpt-5.5"
+# OPENAI_MODEL_TRANSLATE = "gpt-4o-mini"
+# Optional: try OpenAI before Workers AI for explain only (needs OPENAI_API_KEY + optional Gateway vars).
+# AI_EXPLAIN_OPENAI_FIRST = "true"
 TZ = "Asia/Ho_Chi_Minh"
 # Optional: Telegram bot @handle without @ (for /notify deep links). Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET.
 TELEGRAM_BOT_USERNAME = "stocknewsbyocbot"
@@ -32,6 +46,10 @@ TELEGRAM_BOT_USERNAME = "stocknewsbyocbot"
 # Add CF_IMAGES_ACCOUNT_HASH in Cloudflare Worker vars/secrets to enable Hosted Images delivery URLs.
 CF_IMAGES_ACCOUNT_HASH = "N9GPD68IDHgBkqGwpbP3sNnv5LYKTKrH"
 CF_IMAGES_VARIANT = "public"
+# Optional RFC 9728: comma-separated HTTPS OAuth/OIDC issuer URLs (RFC 8414). When unset, metadata uses this worker’s origin.
+# OAUTH_AUTHORIZATION_SERVERS = "https://YOURTEAM.cloudflareaccess.com"
+# Optional: override advertised OAuth scopes (space or comma separated).
+# OAUTH_SCOPES_SUPPORTED = "openid news.read admin"
 
 [triggers]
 crons = ["*/5 * * * *"]

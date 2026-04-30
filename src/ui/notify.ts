@@ -1,38 +1,44 @@
 import { LOGO_URL } from "./brand";
+import { themeAppearanceSwitcher, themeFontLinks, themeSemanticVariablesBlock, type Appearance } from "./theme";
 
 export function renderNotifyPage(params: {
   botUsername: string | null;
   configured: boolean;
   subscriberCount: number;
   baseUrl: string;
+  appearance: Appearance;
 }): string {
   const bot = params.botUsername?.replace(/^@/, "").trim();
   const deepLink =
     bot && params.configured ? `https://t.me/${encodeURIComponent(bot)}?start=notify` : "";
+  const sw = themeAppearanceSwitcher(params.appearance, "/notify");
 
   return `<!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" data-theme="${params.appearance}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Thông báo — Stock News</title>
   <link rel="icon" type="image/png" href="${LOGO_URL}" />
+  ${themeFontLinks()}
   <style>
-    body { font-family: system-ui,Segoe UI,Arial,sans-serif; margin: 0; background: #f5f7fb; color: #111827; }
+    ${themeSemanticVariablesBlock()}
+    .notifyHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
     .wrap { max-width: 560px; margin: 0 auto; padding: 22px; }
-    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 18px; box-shadow: 0 4px 14px rgba(15,23,42,.06); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
     h1 { margin: 0 0 8px; font-size: 1.35rem; }
-    p { line-height: 1.55; color: #374151; margin: 12px 0; }
-    .btn { display:inline-block; padding: 12px 16px; border-radius: 12px; background: #2563eb; color: #fff !important; text-decoration: none; font-weight: 600; margin-top: 10px; }
+    p { line-height: 1.55; color: var(--muted); margin: 12px 0; }
+    .btn { display:inline-block; padding: 12px 16px; border-radius: 12px; background: var(--primary); color: #fff !important; text-decoration: none; font-weight: 700; margin-top: 10px; }
     .btn[disabled], .btn.muted { background: #94a3b8; pointer-events: none; cursor: not-allowed; }
-    .meta { font-size: .9rem; color: #64748b; margin-top: 16px; }
-    code { font-size: .85rem; background: #f1f5f9; padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+    .meta { font-size: .9rem; color: var(--muted); margin-top: 16px; }
+    code { font-size: .85rem; background: var(--code-bg); border:1px solid var(--border); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
     ol { padding-left: 18px; margin: 12px 0; }
     li { margin: 8px 0; }
   </style>
 </head>
-<body>
+<body class="appBody">
   <main class="wrap">
+    <div class="notifyHead"><p style="margin:0"><a href="/">← Trang chủ</a></p>${sw}</div>
     <div class="card">
       <h1>🔔 Nhận thông báo (Telegram)</h1>
       <p>
@@ -46,17 +52,15 @@ export function renderNotifyPage(params: {
           : `<p class="meta">Bot Telegram chưa được cấu hình trên server. Admin cần thêm biến <code>TELEGRAM_BOT_USERNAME</code> và secret <code>TELEGRAM_BOT_TOKEN</code>.</p>`
       }
 
-      <h2 style="margin:20px 0 8px;font-size:1.05rem;">Cài đặt webhook (admin)</h2>
+      <h2 style="margin:20px 0 8px;font-size:1.05rem;">Hướng dẫn cho người dùng</h2>
       <ol>
-        <li>Tạo bot với <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>, lấy token.</li>
-        <li>Thêm secret vào Worker: <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_WEBHOOK_SECRET</code> (chuỗi ngẫu nhiên).</li>
-        <li>Gọi API (một lần):<br />
-          <code>https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook?url=${escapeHtml(
-            params.baseUrl.replace(/\/$/, "")
-          )}/webhooks/telegram&amp;secret_token=&lt;WEBHOOK_SECRET&gt;</code>
-        </li>
+        <li>Bấm nút <strong>Mở Telegram và bật thông báo</strong> ở trên.</li>
+        <li>Trong Telegram, chọn <strong>Start</strong> để đăng ký nhận bản tin.</li>
+        <li>Đảm bảo bạn không tắt hoặc chặn bot để tiếp tục nhận thông báo tự động.</li>
+        <li>Khi hệ thống có bài mới quan trọng, bot sẽ gửi bản tin gộp vào Telegram của bạn.</li>
+        <li>Nếu chưa nhận được thông báo, hãy mở lại bot và gửi <code>/start</code> một lần nữa.</li>
       </ol>
-      <p class="meta">Webhook path: <code>/webhooks/telegram</code></p>
+      <p class="meta">Mẹo: bạn có thể ghim bot lên đầu danh sách chat để không bỏ lỡ tín hiệu mới.</p>
     </div>
   </main>
 </body>

@@ -12,7 +12,16 @@ import {
   upsertArticle,
   upsertDailyReport
 } from "../db";
-import type { CafeFMarketSnapshot, DailyReport, Env, HSXMarketSnapshot, ReportHistoryEntry, StoredArticle } from "../types";
+import type {
+  CafeFMarketSnapshot,
+  DailyReport,
+  Env,
+  FxMarketSnapshot,
+  GoldMarketSnapshot,
+  HSXMarketSnapshot,
+  ReportHistoryEntry,
+  StoredArticle
+} from "../types";
 import { getCafeFMarketSnapshot } from "./cafef-market";
 import { getHSXMarketSnapshot } from "./hsx-market";
 import { loadDailyMedia, refreshDailyMedia } from "./daily-media";
@@ -23,6 +32,12 @@ import { ensureGeneratedThumbnail } from "./image-gen";
 import { analyzeSentimentForArticles } from "./sentiment";
 import { collapseDuplicateNews } from "./news-cluster";
 import { ensureOptimizedImageAsset } from "./image-cache";
+import { broadcastTelegramMessage, getTelegramSubscriberCount, isTelegramNotifyConfigured } from "./telegram-bot";
+import { getFxMarketSnapshot, getGoldMarketSnapshot } from "./market-extra";
+import { precomputeExplainCacheIfNeeded } from "./news-explain-cache";
+import { defaultNoFeedOverviewCopy } from "./vietnam-holidays";
+import { hotScore } from "./article-heat";
+import { buildDailyInvestorSnapshot, persistInvestorDailySnapshot } from "./investor-intel";
 
 const DAILY_CACHE_KEY = "today-report-cache";
 const LAST_GOOD_FEED_KEY = "today-report-last-good";
@@ -43,6 +58,8 @@ interface TodayFeedResponse {
   mediaItems: import("../types").MediaItemRecord[];
   marketSnapshot: CafeFMarketSnapshot | null;
   hsxMarketSnapshot: HSXMarketSnapshot | null;
+  fxMarketSnapshot: FxMarketSnapshot | null;
+  goldMarketSnapshot: GoldMarketSnapshot | null;
   reportHistory: ReportHistoryEntry[];
   total: number;
   cacheHit: boolean;
@@ -52,10 +69,17 @@ interface TodayFeedResponse {
 export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
   const reportDate = getTodayDateKey();
   await ensureDefaultSources(env.DB);
+  const beforeArticles = await getArticlesByDate(env.DB, reportDate);
+  const existingUrls = new Set(beforeArticles.map((item) => item.url));
   const fetched = await fetchAllSourcesFromDb(env);
+  const newlySeenUrls = new Set<string>();
 
   let storedCount = 0;
   for (const article of fetched) {
+    if (!existingUrls.has(article.url)) {
+      newlySeenUrls.add(article.url);
+      existingUrls.add(article.url);
+    }
     await upsertArticle(env.DB, article);
     storedCount += 1;
   }
@@ -156,6 +180,31 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
     aiOk: Boolean(env.AI || env.OPENAI_API_KEY),
     articleCount: finalizedArticles.length
   });
+  await notifyNewArticlesViaTelegram(env, finalizedArticles, newlySeenUrls);
+  try {
+    const hsxForIntel = await getHSXMarketSnapshot(env);
+    const intelSnap = buildDailyInvestorSnapshot({
+      reportDate,
+      articles: finalizedArticles,
+      sentiment,
+      report,
+      hsx: hsxForIntel,
+      hotScoreFn: hotScore
+    });
+    await persistInvestorDailySnapshot(env, intelSnap);
+  } catch (e) {
+    console.error("persist investor snapshot:", e);
+  }
+  const explainCacheRefresh = await precomputeExplainCacheIfNeeded(env, reportDate, finalizedArticles);
+  console.log(
+    "news_explain_cache",
+    JSON.stringify({
+      refreshed: explainCacheRefresh.refreshed,
+      reason: explainCacheRefresh.reason,
+      signature: explainCacheRefresh.signature,
+      reportDate
+    })
+  );
 
   return {
     reportDate,
@@ -164,6 +213,48 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
     summarizedCount,
     report
   };
+}
+
+async function notifyNewArticlesViaTelegram(env: Env, articles: StoredArticle[], newUrls: Set<string>): Promise<void> {
+  if (!newUrls.size) return;
+  if (!isTelegramNotifyConfigured(env)) return;
+  const subscriberCount = await getTelegramSubscriberCount(env);
+  if (subscriberCount <= 0) return;
+
+  const news = articles
+    .filter((item) => newUrls.has(item.url))
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+    .slice(0, 20);
+  if (!news.length) return;
+
+  const lines: string[] = [`🆕 <b>Có ${news.length} bài mới vừa crawl</b>`];
+  for (let i = 0; i < news.length; i += 1) {
+    const item = news[i]!;
+    const summary = (item.summaryVi ?? item.snippet ?? "").trim().slice(0, 180);
+    lines.push(
+      "",
+      `<b>${i + 1}. ${escapeTelegramHtml(item.title)}</b>`,
+      `${escapeTelegramHtml(item.sourceName)} • ${escapeTelegramHtml(item.publishedAt)}`,
+      summary ? `<i>${escapeTelegramHtml(summary)}</i>` : "",
+      `<a href="${escapeTelegramAttr(item.url)}">Đọc bài</a>`
+    );
+  }
+  let text = lines.filter(Boolean).join("\n");
+  if (text.length > 3900) {
+    text = `${text.slice(0, 3850)}\n\n... (rút gọn, mở trang để xem đầy đủ)`;
+  }
+  await broadcastTelegramMessage(env, text);
+}
+
+function escapeTelegramHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeTelegramAttr(input: string): string {
+  return input.replace(/"/g, "&quot;");
 }
 
 export async function getTodayFeed(env: Env, sourceFilter?: string): Promise<TodayFeedResponse> {
@@ -195,7 +286,12 @@ export async function getFeedByDate(
         cachedAt?: string;
       };
       if (typed.report && Array.isArray(typed.articles)) {
-        const [marketSnapshot, hsxMarketSnapshot] = await Promise.all([getCafeFMarketSnapshot(env), getHSXMarketSnapshot(env)]);
+        const [marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot] = await Promise.all([
+          getCafeFMarketSnapshot(env),
+          getHSXMarketSnapshot(env),
+          getFxMarketSnapshot(env),
+          getGoldMarketSnapshot(env)
+        ]);
         const reportHistory = await getReportHistory(env, reportDate);
         const filtered = normalizedSource
           ? typed.articles.filter(
@@ -217,6 +313,8 @@ export async function getFeedByDate(
           mediaItems: Array.isArray(typed.mediaItems) ? typed.mediaItems : [],
           marketSnapshot,
           hsxMarketSnapshot,
+          fxMarketSnapshot,
+          goldMarketSnapshot,
           reportHistory,
           total: deduped.length,
           cacheHit: true,
@@ -226,7 +324,8 @@ export async function getFeedByDate(
     }
   }
 
-  const [report, paged, mediaItems, marketSnapshot, hsxMarketSnapshot, reportHistory] = await Promise.all([
+  const [report, paged, mediaItems, marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot, reportHistory] =
+    await Promise.all([
     getDailyReport(env.DB, reportDate),
     getArticlesByDatePaged({
       db: env.DB,
@@ -239,8 +338,10 @@ export async function getFeedByDate(
       loadDailyMedia(env, reportDate),
       getCafeFMarketSnapshot(env),
       getHSXMarketSnapshot(env),
+      getFxMarketSnapshot(env),
+      getGoldMarketSnapshot(env),
       getReportHistory(env, reportDate)
-  ]);
+    ]);
 
   const dedupedPaged = collapseDuplicateNews(paged.articles);
   const hasFreshData = dedupedPaged.length > 0;
@@ -267,6 +368,8 @@ export async function getFeedByDate(
           mediaItems: Array.isArray(typed.mediaItems) ? typed.mediaItems : [],
           marketSnapshot,
           hsxMarketSnapshot,
+          fxMarketSnapshot,
+          goldMarketSnapshot,
           reportHistory,
           total: merged.length,
           cacheHit: true,
@@ -275,21 +378,24 @@ export async function getFeedByDate(
       }
     }
   }
+  const noDbReportCopy = defaultNoFeedOverviewCopy(reportDate);
   return {
     reportDate,
     report:
       report ??
       ({
         reportDate,
-        overviewVi: "Dữ liệu tổng hợp chưa sẵn sàng. Vui lòng refresh hoặc chờ hệ thống đồng bộ trong vài phút.",
-        outlookVi: "Market outlook sẽ được cập nhật sau khi hệ thống thu thập dữ liệu tự động 5 phút/lần. This is not financial advice.",
-        assumptionsVi: "",
+        overviewVi: noDbReportCopy.overviewVi,
+        outlookVi: noDbReportCopy.outlookVi,
+        assumptionsVi: noDbReportCopy.assumptionsVi,
         articleCount: paged.total
       } satisfies DailyReport),
     articles: dedupedPaged,
     mediaItems,
     marketSnapshot,
     hsxMarketSnapshot,
+    fxMarketSnapshot,
+    goldMarketSnapshot,
     reportHistory,
     total: dedupedPaged.length,
     cacheHit: false,

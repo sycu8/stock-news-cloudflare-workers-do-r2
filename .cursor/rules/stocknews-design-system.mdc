@@ -1,0 +1,11 @@
+---
+description: Giao diện thống nhất (theme, font, light/dark) cho Stock News worker
+globs: src/ui/**/*.ts,src/index.ts
+---
+
+# Design system
+
+- **Token & theme:** Luôn dùng `src/ui/theme.ts` — `themeFontLinks()`, `themeSemanticVariablesBlock()`, `themeAppearanceSwitcher()`, type `Appearance`, cookie `sn_theme` (`APPEARANCE_COOKIE`). Không thêm palette/font Google khác trừ khi cập nhật chung trong `theme.ts`.
+- **HTML:** Mọi trang HTML đặt `data-theme="light|dark"` trên `<html>` và `class="appBody"` trên `<body>` (trang Desk thêm `deskBody` khi cần nền gradient desk).
+- **Chế độ sáng/tối:** Chỉ đổi qua `GET /api/set-appearance?theme=light|dark&next=/path` (path nội bộ). Không dùng `@media (prefers-color-scheme: …)` để override palette khi đã có `data-theme`.
+- **Màu trong CSS inline:** Ưu tiên `var(--bg)`, `var(--surface)`, `var(--text)`, `var(--muted)`, `var(--border)`, `var(--primary)`, `var(--primary2)`, `var(--pos|neg|neu|warning)`, v.v. theo block semantic trong `themeSemanticVariablesBlock()`.
