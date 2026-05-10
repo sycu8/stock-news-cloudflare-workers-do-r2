@@ -1,0 +1,41 @@
+# OneManCompany API — replace placeholder D1/KV IDs after `wrangler d1 create`, `wrangler kv namespace create`, R2 bucket create.
+name = "onemancompany-api"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+account_id = "4c15704ef706b9c8954cd6f9feb678d8"
+
+[observability]
+enabled = true
+
+[vars]
+# AI Gateway slug (Workers AI routes through gateway when set + CF_AIG_TOKEN secret optional for dashboard analytics)
+AI_GATEWAY_ID = "onemancompany-gateway"
+# Same as dashboard account ID when using gateway URL fallback
+CF_ACCOUNT_ID = "4c15704ef706b9c8954cd6f9feb678d8"
+DEFAULT_WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "onemancompany"
+database_id = "1e0c414c-c131-46de-b7d5-d5d3b29f99de"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "93a56ac722074ec08a395706148105de"
+preview_id = "1bc335372be9405a8e07c439d794c899"
+
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "onemancompany-artifacts"
+preview_bucket_name = "onemancompany-artifacts-preview"
+
+[ai]
+binding = "AI"
+
+[durable_objects]
+bindings = [{ name = "COMPANY_ROOM", class_name = "CompanyRoom" }]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CompanyRoom"]

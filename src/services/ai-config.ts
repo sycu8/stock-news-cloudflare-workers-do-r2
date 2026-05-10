@@ -23,6 +23,13 @@ export function workersAiTextModel(env: Env, purpose: TextAiPurpose): string {
       DEFAULT_WORKERS_SUMMARY
     );
   }
+  if (purpose === "translate") {
+    return (
+      env.WORKERS_AI_MODEL_TRANSLATE?.trim() ||
+      env.WORKERS_AI_MODEL_SUMMARY?.trim() ||
+      DEFAULT_WORKERS_SUMMARY
+    );
+  }
   return env.WORKERS_AI_MODEL_SUMMARY?.trim() || DEFAULT_WORKERS_SUMMARY;
 }
 
@@ -43,7 +50,7 @@ export function openAiChatModel(env: Env, purpose: TextAiPurpose): string {
 
 export function maxTokensForTextPurpose(purpose: TextAiPurpose): number {
   if (purpose === "explain") return 640;
-  if (purpose === "translate") return 4096;
+  if (purpose === "translate") return 900;
   return 420;
 }
 
@@ -60,6 +67,9 @@ function envFlagTrue(v: string | undefined): boolean {
  */
 export function textInferenceOrder(env: Env, purpose: TextAiPurpose): TextInferenceBackend[] {
   if (purpose === "explain" && envFlagTrue(env.AI_EXPLAIN_OPENAI_FIRST) && env.OPENAI_API_KEY?.trim()) {
+    return ["openai", "workers"];
+  }
+  if (purpose === "translate" && env.OPENAI_API_KEY?.trim() && !envFlagTrue(env.AI_TRANSLATE_WORKERS_FIRST)) {
     return ["openai", "workers"];
   }
   return ["workers", "openai"];

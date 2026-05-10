@@ -9,6 +9,7 @@ const parser = new XMLParser({
   attributeNamePrefix: "@_",
   trimValues: true
 });
+const SOURCE_FETCH_CONCURRENCY = 8;
 
 interface RssItem {
   title?: string;
@@ -24,18 +25,16 @@ export async function fetchAllSources(): Promise<NormalizedArticle[]> {
 
 export async function fetchAllSourcesFromDb(env: Env): Promise<NormalizedArticle[]> {
   const enabledSources = await listEnabledSources(env.DB);
-  const grouped = await Promise.all(
-    enabledSources.map(async (source) => {
-      const result = await fetchSource(env, source);
-      await logCrawlRun(env.DB, {
-        sourceId: source.id,
-        status: result.status,
-        message: result.message,
-        fetchedCount: result.items.length
-      });
-      return result.items;
-    })
-  );
+  const grouped = await mapWithConcurrency(enabledSources, SOURCE_FETCH_CONCURRENCY, async (source) => {
+    const result = await fetchSource(env, source);
+    await logCrawlRun(env.DB, {
+      sourceId: source.id,
+      status: result.status,
+      message: result.message,
+      fetchedCount: result.items.length
+    });
+    return result.items;
+  });
   const merged = grouped.flat();
 
   const dedupeMap = new Map<string, NormalizedArticle>();
@@ -272,4 +271,23 @@ function toAbsoluteUrl(input: string, baseUrl: string): string | null {
   } catch {
     return null;
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  const limit = Math.max(1, Math.min(concurrency, items.length || 1));
+  let nextIndex = 0;
+  const runners = Array.from({ length: limit }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]!, index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
 }

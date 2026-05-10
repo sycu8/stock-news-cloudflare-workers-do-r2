@@ -1,6 +1,13 @@
 export interface Env {
   DB: D1Database;
   CACHE: KVNamespace;
+  /** AI Search instance binding (wrangler [[ai_search]]). */
+  AI_SEARCH?: {
+    search: (params: unknown) => Promise<unknown>;
+    add?: (items: unknown[]) => Promise<unknown>;
+    upsert?: (items: unknown[]) => Promise<unknown>;
+    deleteByIds?: (ids: string[]) => Promise<unknown>;
+  };
   ASSETS?: R2Bucket;
   /** Cloudflare Images transform binding (see wrangler.toml [images]) */
   IMAGES?: import("@cloudflare/workers-types").ImagesBinding;
@@ -12,7 +19,7 @@ export interface Env {
   OPENAI_MODEL_SUMMARY?: string;
   /** OpenAI model for `/api/news/explain` style reasoning (optional). */
   OPENAI_MODEL_EXPLAIN?: string;
-  /** OpenAI model for EN translations (optional). */
+  /** OpenAI model for English investor translations (optional). */
   OPENAI_MODEL_TRANSLATE?: string;
   /** AI Gateway slug (Workers `AI.run` gateway + OpenAI path segment when account id set). */
   AI_GATEWAY_ID?: string;
@@ -35,11 +42,20 @@ export interface Env {
    * (use with `OPENAI_MODEL_EXPLAIN` for a stronger model on explain only).
    */
   AI_EXPLAIN_OPENAI_FIRST?: string;
+  /**
+   * When `"true"`, article English translation tries Workers AI before OpenAI.
+   * Default (unset): OpenAI first when `OPENAI_API_KEY` is set (more reliable English output).
+   */
+  AI_TRANSLATE_WORKERS_FIRST?: string;
   /** Workers AI model for news impact explain (optional; else same as summary). */
   WORKERS_AI_MODEL_EXPLAIN?: string;
+  /** Workers AI model for English investor translations (optional). */
+  WORKERS_AI_MODEL_TRANSLATE?: string;
   /** Workers AI model for generated thumbnails (optional). */
   WORKERS_AI_MODEL_IMAGE?: string;
   ADMIN_REFRESH_TOKEN: string;
+  /** Temporary compatibility escape hatch. Prefer cookie login or x-admin-token header. */
+  ALLOW_ADMIN_QUERY_TOKEN?: string;
   TZ?: string;
   WORKER_VERSION?: string;
   /** Telegram Bot API token (@BotFather); use `wrangler secret put TELEGRAM_BOT_TOKEN` */

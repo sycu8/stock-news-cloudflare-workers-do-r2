@@ -97,8 +97,10 @@ export async function explainNewsImpact(
   marketContext?: string
 ): Promise<string> {
   const prompt = [
-    "Giải thích nhanh tác động của tin tức lên giá cổ phiếu bằng tiếng Việt, 4-6 gạch đầu dòng ngắn.",
-    "Tập trung vào: cơ chế tác động, nhóm ngành/mã hưởng lợi hoặc chịu áp lực, rủi ro cần theo dõi, khung thời gian ngắn hạn.",
+    "Giải thích nhanh tác động của tin tức lên giá cổ phiếu bằng tiếng Việt cho nhà đầu tư đọc nhanh.",
+    "Trả về đúng 4 mục, mỗi mục gồm một dòng tiêu đề và 1-2 gạch đầu dòng ngắn bên dưới.",
+    "Các tiêu đề bắt buộc: Cơ chế tác động; Nhóm ngành/mã hưởng lợi hoặc chịu áp lực; Rủi ro cần theo dõi; Khung thời gian ngắn hạn.",
+    "Không tạo bullet rỗng, không chỉ viết dấu '-', không lặp lại tiêu đề nếu không có nội dung.",
     "Không đưa khuyến nghị mua/bán. Không bịa dữ liệu ngoài nội dung cho trước.",
     marketContext ? `Bối cảnh thị trường: ${marketContext}` : "",
     `Tiêu đề: ${article.title}`,

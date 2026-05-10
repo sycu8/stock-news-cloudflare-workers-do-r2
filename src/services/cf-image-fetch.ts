@@ -35,7 +35,18 @@ export async function fetchOptimizedRemoteImage(
     }
   }
 
-  return fetchViaCfImageResize(upstreamUrl, width, quality, accept);
+  try {
+    return await fetchViaCfImageResize(upstreamUrl, width, quality, accept);
+  } catch (error) {
+    console.warn("cf.image transform failed, fallback to plain fetch:", error);
+    return fetch(upstreamUrl, {
+      headers: {
+        "User-Agent": "vn-market-daily-worker/1.0 (+Cloudflare Worker)",
+        Accept: "image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8"
+      },
+      redirect: "follow"
+    });
+  }
 }
 
 async function tryImagesBindingFetch(

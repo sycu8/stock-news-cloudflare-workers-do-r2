@@ -38,10 +38,13 @@ import { precomputeExplainCacheIfNeeded } from "./news-explain-cache";
 import { defaultNoFeedOverviewCopy } from "./vietnam-holidays";
 import { hotScore } from "./article-heat";
 import { buildDailyInvestorSnapshot, persistInvestorDailySnapshot } from "./investor-intel";
+import { buildTelegramArticleHref } from "./telegram-article-link";
 
 const DAILY_CACHE_KEY = "today-report-cache";
 const LAST_GOOD_FEED_KEY = "today-report-last-good";
 const REPORT_HISTORY_PREFIX = "report-history";
+const ENRICH_CONCURRENCY = 4;
+const SUMMARY_CONCURRENCY = 4;
 
 export interface RefreshResult {
   reportDate: string;
@@ -66,6 +69,57 @@ interface TodayFeedResponse {
   cachedAt: string | null;
 }
 
+async function runLimitedArticleEnrichment(env: Env, reportDate: string): Promise<void> {
+  const toEnrich = await listArticlesNeedingEnrichment(env.DB, reportDate, 80);
+  let generatedReservations = 0;
+  await mapWithConcurrency(toEnrich, ENRICH_CONCURRENCY, async (article) => {
+    const extracted = await fetchAndExtractSource(article.url);
+    if (extracted?.imageUrl && (!article.imageUrl || article.imageUrl.trim().length === 0)) {
+      const optimized =
+        (await ensureOptimizedImageAsset({
+          env,
+          sourceUrl: extracted.imageUrl,
+          namespace: "article-thumb"
+        })) ?? extracted.imageUrl;
+      await setArticleImageUrl(env.DB, article.id, optimized);
+    }
+    if (
+      (!article.imageUrl || article.imageUrl.trim().length === 0) &&
+      !extracted?.imageUrl &&
+      generatedReservations < 24
+    ) {
+      generatedReservations += 1;
+      const gen = await ensureGeneratedThumbnail({
+        env,
+        reportDate,
+        articleUrl: article.url,
+        title: article.title
+      });
+      if (gen) {
+        await setArticleImageUrl(env.DB, article.id, gen.publicPath);
+      }
+    }
+    if ((!article.summaryVi || article.summaryVi.trim().length === 0) && extracted?.text) {
+      const summary = await summarizeArticleFromSource(article, extracted.text, env);
+      await setArticleSummary(env.DB, article.id, summary);
+    }
+  });
+}
+
+async function summarizeArticlesMissingVi(env: Env, reportDate: string): Promise<number> {
+  const todaysArticles = await getArticlesByDate(env.DB, reportDate);
+  let summarizedCount = 0;
+  await mapWithConcurrency(todaysArticles, SUMMARY_CONCURRENCY, async (article) => {
+    if (article.summaryVi && article.summaryVi.trim().length > 0) {
+      return;
+    }
+    const summary = await summarizeArticle(article, env);
+    await setArticleSummary(env.DB, article.id, summary);
+    summarizedCount += 1;
+  });
+  return summarizedCount;
+}
+
 export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
   const reportDate = getTodayDateKey();
   await ensureDefaultSources(env.DB);
@@ -84,61 +138,20 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
     storedCount += 1;
   }
 
-  // Enrich a limited number of new/updated articles by opening the source URL to:
-  // - extract og:image as representative thumbnail
-  // - summarize based on source excerpt (Workers AI preferred)
-  // This is intentionally capped to control cost/latency for 5-minute cron.
-  const toEnrich = await listArticlesNeedingEnrichment(env.DB, reportDate, 80);
-  let generatedCount = 0;
-  for (const article of toEnrich) {
-    const extracted = await fetchAndExtractSource(article.url);
-    if (extracted?.imageUrl && (!article.imageUrl || article.imageUrl.trim().length === 0)) {
-      const optimized =
-        (await ensureOptimizedImageAsset({
-          env,
-          sourceUrl: extracted.imageUrl,
-          namespace: "article-thumb"
-        })) ?? extracted.imageUrl;
-      await setArticleImageUrl(env.DB, article.id, optimized);
-    }
-    if (
-      (!article.imageUrl || article.imageUrl.trim().length === 0) &&
-      !extracted?.imageUrl &&
-      generatedCount < 24
-    ) {
-      const gen = await ensureGeneratedThumbnail({
-        env,
-        reportDate,
-        articleUrl: article.url,
-        title: article.title
-      });
-      if (gen) {
-        await setArticleImageUrl(env.DB, article.id, gen.publicPath);
-        generatedCount += 1;
-      }
-    }
-    if ((!article.summaryVi || article.summaryVi.trim().length === 0) && extracted?.text) {
-      const summary = await summarizeArticleFromSource(article, extracted.text, env);
-      await setArticleSummary(env.DB, article.id, summary);
-    }
-  }
+  await runLimitedArticleEnrichment(env, reportDate);
+  let summarizedCount = await summarizeArticlesMissingVi(env, reportDate);
 
-  const todaysArticles = await getArticlesByDate(env.DB, reportDate);
-  let summarizedCount = 0;
-  for (const article of todaysArticles) {
-    if (article.summaryVi && article.summaryVi.trim().length > 0) {
-      continue;
-    }
-    const summary = await summarizeArticle(article, env);
-    await setArticleSummary(env.DB, article.id, summary);
-    summarizedCount += 1;
-  }
+  // Tin Vietstock chỉ trong bảng media → đồng bộ vào articles rồi enrich lần hai (trước khi tổng hợp ngày).
+  const articlesForMedia = await getArticlesByDate(env.DB, reportDate);
+  await refreshDailyMedia(env, reportDate, articlesForMedia);
+
+  await runLimitedArticleEnrichment(env, reportDate);
+  summarizedCount += await summarizeArticlesMissingVi(env, reportDate);
 
   const finalizedArticles = await getArticlesByDate(env.DB, reportDate);
   const sentiment = analyzeSentimentForArticles(finalizedArticles);
   const report = await summarizeDailyOverview(reportDate, finalizedArticles, env);
   await upsertDailyReport(env.DB, report);
-  await refreshDailyMedia(env, reportDate, finalizedArticles);
   const mediaItems = await loadDailyMedia(env, reportDate);
   await appendReportHistory(env, reportDate, {
     updatedAt: new Date().toISOString(),
@@ -231,12 +244,13 @@ async function notifyNewArticlesViaTelegram(env: Env, articles: StoredArticle[],
   for (let i = 0; i < news.length; i += 1) {
     const item = news[i]!;
     const summary = (item.summaryVi ?? item.snippet ?? "").trim().slice(0, 180);
+    const articleHref = buildTelegramArticleHref(item);
     lines.push(
       "",
       `<b>${i + 1}. ${escapeTelegramHtml(item.title)}</b>`,
       `${escapeTelegramHtml(item.sourceName)} • ${escapeTelegramHtml(item.publishedAt)}`,
       summary ? `<i>${escapeTelegramHtml(summary)}</i>` : "",
-      `<a href="${escapeTelegramAttr(item.url)}">Đọc bài</a>`
+      `<a href="${escapeTelegramAttr(articleHref)}">Đọc bài trên vietstock.info</a>`
     );
   }
   let text = lines.filter(Boolean).join("\n");
@@ -419,4 +433,21 @@ async function getReportHistory(env: Env, reportDate: string): Promise<ReportHis
     .filter((x) => x && typeof x === "object")
     .map((x) => x as ReportHistoryEntry)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+async function mapWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  const limit = Math.max(1, Math.min(concurrency, items.length || 1));
+  let nextIndex = 0;
+  const runners = Array.from({ length: limit }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await worker(items[index]!, index);
+    }
+  });
+  await Promise.all(runners);
 }

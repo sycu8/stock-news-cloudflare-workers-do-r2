@@ -177,20 +177,47 @@ export async function getArticlesByDate(db: D1Database, reportDate: string): Pro
   }));
 }
 
-/** Recent articles for sitemap URLs (canonical `/article` links). */
-export async function listRecentArticlesForSitemap(db: D1Database, limit: number): Promise<Array<{ url: string; publishedAt: string }>> {
+/** Recent articles for sitemap URLs (canonical friendly article links). */
+export async function listRecentArticlesForSitemap(db: D1Database, limit: number): Promise<Array<{ url: string; title: string; publishedAt: string }>> {
   const cap = Math.min(Math.max(1, limit), 4000);
   const { results } = await db
     .prepare(
-      `SELECT url, published_at
+      `SELECT url, title, published_at
        FROM articles
        ORDER BY published_at DESC
        LIMIT ?1`
     )
     .bind(cap)
-    .all<{ url: string; published_at: string }>();
+    .all<{ url: string; title: string; published_at: string }>();
   const rows = results ?? [];
-  return rows.map((row) => ({ url: row.url, publishedAt: row.published_at }));
+  return rows.map((row) => ({ url: row.url, title: row.title, publishedAt: row.published_at }));
+}
+
+/** Full rows for admin / bulk AI jobs (cap 500). */
+export async function listRecentStoredArticles(db: D1Database, limit: number): Promise<StoredArticle[]> {
+  const cap = Math.min(Math.max(1, limit), 500);
+  const { results } = await db
+    .prepare(
+      `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
+       FROM articles
+       ORDER BY published_at DESC
+       LIMIT ?1`
+    )
+    .bind(cap)
+    .all<D1ResultRow>();
+  const rows = results ?? [];
+  return rows.map((row) => ({
+    id: row.id,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    title: row.title,
+    url: row.url,
+    publishedAt: row.published_at,
+    snippet: row.snippet ?? "",
+    contentLimited: row.content_limited === 1,
+    summaryVi: row.summary_vi,
+    imageUrl: row.image_url ?? null
+  }));
 }
 
 export async function getArticleByUrl(db: D1Database, url: string): Promise<StoredArticle | null> {

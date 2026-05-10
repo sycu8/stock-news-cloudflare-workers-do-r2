@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { MEDIA_SOURCES } from "../config/sources";
-import { getMediaItemsByDate, upsertMediaItem } from "../db";
-import type { Env, MediaItemRecord, StoredArticle } from "../types";
+import { getArticleByUrl, getMediaItemsByDate, setArticleImageUrl, setArticleSummary, upsertArticle, upsertMediaItem } from "../db";
+import type { Env, MediaItemRecord, NormalizedArticle, StoredArticle } from "../types";
 import { formatCalendarDateVietnam, toIsoOrNow } from "../utils/date";
 import { stripHtml, truncate } from "../utils/text";
 import { fetchAndExtractSource } from "./source-extract";
@@ -77,6 +77,46 @@ export async function refreshDailyMedia(env: Env, reportDate: string, articles: 
         })) ?? item.imageUrl;
     }
     await upsertMediaItem(env.DB, item);
+  }
+
+  await syncVietstockMediaItemsIntoArticles(env.DB, finalItems);
+}
+
+/** Đưa tin Vietstock từ khối “Bản tin vắn & media” vào bảng articles để có trang /tin/... và AI phân tích giống bài RSS chính. */
+export async function syncVietstockMediaItemsIntoArticles(db: D1Database, items: MediaItemRecord[]): Promise<number> {
+  let insertedOrUpdated = 0;
+  for (const item of items) {
+    if (!isVietstockVnUrl(item.url)) continue;
+    const snippet = item.summaryVi?.trim() ? item.summaryVi.trim() : item.title;
+    const row: NormalizedArticle = {
+      sourceId: item.sourceId,
+      sourceName: item.sourceName,
+      title: item.title,
+      url: item.url,
+      publishedAt: item.publishedAt,
+      snippet,
+      contentLimited: false
+    };
+    await upsertArticle(db, row);
+    insertedOrUpdated += 1;
+    const saved = await getArticleByUrl(db, item.url);
+    if (!saved) continue;
+    if (item.summaryVi?.trim() && (!saved.summaryVi || saved.summaryVi.trim().length === 0)) {
+      await setArticleSummary(db, saved.id, item.summaryVi.trim());
+    }
+    if (item.imageUrl?.trim() && (!saved.imageUrl || saved.imageUrl.trim().length === 0)) {
+      await setArticleImageUrl(db, saved.id, item.imageUrl.trim());
+    }
+  }
+  return insertedOrUpdated;
+}
+
+function isVietstockVnUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+    return host === "vietstock.vn" || host.endsWith(".vietstock.vn");
+  } catch {
+    return false;
   }
 }
 

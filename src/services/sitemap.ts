@@ -1,4 +1,5 @@
 import { formatDateOnly } from "../utils/date";
+export { buildArticleDetailPath } from "./article-routing";
 
 export interface SitemapUrlEntry {
   loc: string;
@@ -22,13 +23,6 @@ export function w3cDateFromIso(isoLike: string): string {
     return formatDateOnly(new Date());
   }
   return d.toISOString().slice(0, 10);
-}
-
-export function buildArticleDetailPath(reportDate: string, articleUrl: string): string {
-  const u = new URLSearchParams();
-  u.set("d", reportDate);
-  u.set("u", articleUrl);
-  return `/article?${u.toString()}`;
 }
 
 export function normalizeStockSymbol(symbol: string): string | null {

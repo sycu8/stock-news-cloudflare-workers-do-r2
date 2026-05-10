@@ -33,12 +33,7 @@ export function themeFontLinks(): string {
     window.location.reload();
   };
 })();
-</script>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" /></noscript>`;
+</script>`;
 }
 
 /** Biến semantic: gắn trên `html[data-theme="light|dark"]`. */
@@ -87,7 +82,7 @@ export function themeSemanticVariablesBlock(): string {
     --desk-hero-grad: radial-gradient(1200px 600px at 10% -10%, rgba(255,106,0,.14), transparent 55%), radial-gradient(900px 500px at 100% 0%, rgba(34,211,238,.1), transparent 50%), linear-gradient(180deg, #050608, #0c1018);
   }
   body.appBody {
-    font-family: Montserrat, Inter, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     margin: 0;
     background: var(--bg);
     color: var(--text);

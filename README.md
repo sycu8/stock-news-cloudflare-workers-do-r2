@@ -145,10 +145,11 @@ In `.dev.vars`:
 - `ADMIN_REFRESH_TOKEN` (required)
 - `OPENAI_API_KEY` (optional)
 - `OPENAI_MODEL` (default: `gpt-5.5`) — base model when task-specific overrides are unset
-- **Optional per-task OpenAI models**: `OPENAI_MODEL_SUMMARY` (article + daily report text), `OPENAI_MODEL_EXPLAIN` (`/api/news/explain`), `OPENAI_MODEL_TRANSLATE` (EN strings on the site)
+- **Optional per-task OpenAI models**: `OPENAI_MODEL_SUMMARY` (article + daily report text), `OPENAI_MODEL_EXPLAIN` (`/api/news/explain`)
 - **Optional AI Gateway** (analytics, caching, rate limits): set `AI_GATEWAY_ID` + `AI_GATEWAY_ACCOUNT_ID` (same hex as `account_id` in `wrangler.toml`) in `[vars]`, then `CF_AIG_TOKEN` in secrets. OpenAI `fetch` targets `https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/openai/chat/completions` per [OpenAI provider routing](https://developers.cloudflare.com/ai-gateway/usage/providers/openai/). Workers `AI.run` also receives `gateway: { id }` when `AI_GATEWAY_ID` is set.
 - **Optional Workers AI overrides**: `WORKERS_AI_MODEL_SUMMARY`, `WORKERS_AI_MODEL_EXPLAIN` (defaults to summary model if unset), `WORKERS_AI_MODEL_IMAGE` (thumbnail generation; default SDXL Lightning)
 - `AI_GATEWAY_SKIP_CACHE`: set to `false` to allow gateway-side cache on Workers AI runs (default skips cache)
+- `ALLOW_ADMIN_QUERY_TOKEN`: optional emergency compatibility flag. Keep unset/`false`; admin should use `/admin/login` cookie auth or the `x-admin-token` header so secrets do not leak into URLs/logs.
 
 Set production secrets:
 
@@ -169,7 +170,8 @@ Current key bindings in `wrangler.toml`:
 - `GET /`: homepage dashboard (SSR); query params include `source`, `sentiment`, `date`, `q`, `page` (bounded).
 - `GET /search`: redirects to `/` preserving query string (alias for “ticker/search” style URLs).
 - `GET /article?u=<encoded_url>`: article detail page (`d` optional for consistency with redirects).
-- `GET /img?u=<encoded_https_url>&w=<px>&q=<quality>`: optimized remote image proxy (see Image delivery).
+- `GET /img?u=<encoded_https_url>&w=<px>&q=<quality>`: optimized remote image proxy (see Image delivery). Public/private/local hosts and credential-bearing URLs are rejected.
+- Image proxy responses are cached at the Cloudflare edge and in browsers for one year with `immutable`; cache keys include source URL, width, quality, and negotiated output format.
 - `GET /api/news/today`: JSON feed for current day (`date`, `source`, `page`, `pageSize` bounded).
 - `POST /api/rum`: accepts JSON beacon from the homepage (structured logs); used for metrics experiments.
 - `GET /rss/today`: RSS 2.0 feed for today (cache-friendly headers).
@@ -184,7 +186,7 @@ Current key bindings in `wrangler.toml`:
 - **WebMCP** ([spec](https://webmachinelearning.github.io/webmcp/)): the home page registers `navigator.modelContext.registerTool()` tools at the end of the document (with retries for late `modelContext`), including navigation, `/api/news/today` fetch, scroll targets, and AI Explain.
 - `GET /openapi.json`: minimal OpenAPI 3.1 document for public read endpoints.
 - `POST /admin/refresh`: manually trigger refresh (`x-admin-token` header).
-- `GET /admin/sources?token=<ADMIN_REFRESH_TOKEN>`: source management UI.
+- `GET /admin/login`: admin cookie login. API-style admin calls can use `x-admin-token`; query-string tokens are disabled unless `ALLOW_ADMIN_QUERY_TOKEN=true`.
 - `POST /admin/sources`: add source (`rss` or `html_list`).
 - `POST /admin/sources/:id/toggle`: enable/disable source.
 - `POST /admin/sources/:id/delete`: delete custom source.
@@ -203,7 +205,8 @@ Current key bindings in `wrangler.toml`:
 2. Ensure remote migrations are applied:
    - `npm run migrate:remote`
 3. Deploy:
-   - `npm run deploy`
+   - `npm run deploy` (runs TypeScript check first via `predeploy`)
+   - or `npm run deploy:safe`
 4. Smoke test:
    - `/`
    - `/api/news/today`
@@ -211,7 +214,25 @@ Current key bindings in `wrangler.toml`:
    - `/health`
    - `/robots.txt` and `/sitemap.xml` (expect 200)
    - `/rss/today`
-   - `/admin/sources?token=...`
+   - `/admin/login`
+
+### Rollback / Revoke Bad Deploy
+
+Cloudflare Workers supports immediate rollback to a previous Worker version with Wrangler. Rollback creates a new active deployment pointing traffic back to the selected previous version; it does not change local files or roll back D1/KV/R2 data/resources.
+
+1. List recent deployments:
+   - `npm run deploy:history`
+2. Roll back to the previous deployed version:
+   - `npm run deploy:rollback:latest`
+3. Roll back to a specific version ID:
+   - `npm run deploy:rollback -- <VERSION_ID> --message "Rollback bad deploy"`
+4. Smoke test after rollback:
+   - `/health`
+   - `/`
+   - `/api/news/today`
+   - `/rss/today`
+
+If the bad release included a D1 migration, treat rollback as code-only first, then apply a forward-compatible corrective migration. Do not delete or manually rewrite production D1/KV/R2 data as part of a blind rollback.
 
 ### Crawling / SEO
 

@@ -6,7 +6,9 @@ import {
   deleteManualArticle,
   deleteSource,
   getArticleByUrl,
+  getArticlesByDate,
   getMediaItemByUrl,
+  listRecentStoredArticles,
   listRecentArticlesForSitemap,
   getTodayDateKey,
   getLatestSystemStatusSnapshot,
@@ -45,7 +47,14 @@ import { LOGO_ASSET_KEY, LOGO_URL } from "./ui/brand";
 import { analyzeSentimentForArticles, classifySentimentText } from "./services/sentiment";
 import { fetchAndExtractSource } from "./services/source-extract";
 import { fetchOptimizedRemoteImage } from "./services/cf-image-fetch";
-import { getOrCreateCachedExplanation } from "./services/news-explain-cache";
+import {
+  getOrCreateCachedExplanation,
+  precomputeExplainCacheIfNeeded,
+  purgeCachedNewsExplanations,
+  purgeNewsExplainRefreshState
+} from "./services/news-explain-cache";
+import { getOrCreateEnglishArticleTranslation, purgeArticleTranslationCachesForUrls } from "./services/article-translation";
+import { analyzeArticleMarketImpact } from "./services/article-impact";
 import {
   apiCatalogContentType,
   buildApiCatalogHeadLinkHeader,
@@ -68,6 +77,7 @@ import {
   w3cDateFromIso,
   type SitemapUrlEntry
 } from "./services/sitemap";
+import { extractArticleUrlHashFromSlug, findArticleByUrlHash } from "./services/article-routing";
 import { formatCalendarDateVietnam, reportDayStartIso } from "./utils/date";
 import { buildLivePollJson } from "./services/live-poll";
 import {
@@ -103,10 +113,29 @@ import {
 } from "./ui/investor-desk";
 import { searchArticlesWithCloudflareAi } from "./services/ai-search";
 import { crawlWebsiteIntoContainer, getWebsiteContainerDocs } from "./services/site-crawl-container";
-
 const app = new Hono<{ Bindings: Env }>();
 const ADMIN_COOKIE_NAME = "admin_token";
 const ADMIN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+const IMAGE_PROXY_CACHE_CONTROL = "public, max-age=31536000, s-maxage=31536000, immutable, stale-while-revalidate=604800, stale-if-error=604800";
+const IMAGE_PROXY_CACHE_NAME = "image-proxy-v1";
+
+app.use("*", async (c, next) => {
+  await next();
+  c.res.headers.set("X-Content-Type-Options", "nosniff");
+  c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  c.res.headers.set("X-Frame-Options", "SAMEORIGIN");
+  c.res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), browsing-topics=()");
+  if (new URL(c.req.url).protocol === "https:") {
+    c.res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
+});
+
+app.use("/admin/*", async (c, next) => {
+  if (!isSameOriginMutation(c)) {
+    return c.text("Forbidden", 403, { "cache-control": "no-store" });
+  }
+  await next();
+});
 
 function jsonUnauthorizedWithResourceMetadata(c: Context<{ Bindings: Env }>) {
   return c.json(
@@ -154,12 +183,41 @@ function getAdminToken(c: { env: Env; req: { header(name: string): string | unde
   // Prefer cookie-based login to avoid leaking token in URL query params.
   const fromCookie = getCookieValue(c as any, ADMIN_COOKIE_NAME);
   if (fromCookie) return fromCookie;
-  return c.req.header("x-admin-token") ?? c.req.query("token") ?? null;
+  const fromHeader = c.req.header("x-admin-token");
+  if (fromHeader) return fromHeader;
+  return c.env.ALLOW_ADMIN_QUERY_TOKEN === "true" ? c.req.query("token") ?? null : null;
 }
 
 function isAdminAuthorized(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): boolean {
   const token = getAdminToken(c);
-  return Boolean(token && token === c.env.ADMIN_REFRESH_TOKEN);
+  return Boolean(token && constantTimeEqual(token, c.env.ADMIN_REFRESH_TOKEN));
+}
+
+function isSameOriginMutation(c: Context<{ Bindings: Env }>): boolean {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method.toUpperCase())) return true;
+  if (c.req.header("x-admin-token")) return true;
+  const requestOrigin = new URL(c.req.url).origin;
+  const origin = c.req.header("origin");
+  if (origin) return origin === requestOrigin;
+  const referer = c.req.header("referer");
+  if (!referer) return false;
+  try {
+    return new URL(referer).origin === requestOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aa = enc.encode(a);
+  const bb = enc.encode(b);
+  let diff = aa.length ^ bb.length;
+  const len = Math.max(aa.length, bb.length);
+  for (let i = 0; i < len; i += 1) {
+    diff |= (aa[i] ?? 0) ^ (bb[i] ?? 0);
+  }
+  return diff === 0;
 }
 
 app.on(["GET", "HEAD"], "/", async (c) => {
@@ -232,7 +290,7 @@ app.on(["GET", "HEAD"], "/", async (c) => {
           const visibleRemaining = isFirstPage ? pageSlice.slice(0, restLimit) : pageSlice.slice(0, maxVisible);
 
           const redirectify = (url: string) => `/go?d=${encodeURIComponent(feed.reportDate)}&u=${encodeURIComponent(url)}`;
-          const detailify = (url: string) => `/article?d=${encodeURIComponent(feed.reportDate)}&u=${encodeURIComponent(url)}`;
+          const detailify = (article: { url: string; title: string }) => buildArticleDetailPath(feed.reportDate, article.url, article.title);
           const withSentiment = <T extends { title: string; summaryVi: string | null; snippet: string }>(a: T) => ({
             ...a,
             sentimentLabel: classifySentimentText(`${a.title}\n${a.summaryVi ?? ""}\n${a.snippet}`).label
@@ -242,7 +300,7 @@ app.on(["GET", "HEAD"], "/", async (c) => {
                 withSentiment({
                   ...a,
                   sourceUrl: redirectify(a.url),
-                  detailUrl: detailify(a.url)
+                  detailUrl: detailify(a)
                 })
               )
             : [];
@@ -250,7 +308,7 @@ app.on(["GET", "HEAD"], "/", async (c) => {
             withSentiment({
               ...a,
               sourceUrl: redirectify(a.url),
-              detailUrl: detailify(a.url)
+              detailUrl: detailify(a)
             })
           );
 
@@ -574,7 +632,7 @@ app.get("/go", async (c) => {
     const url = c.req.query("u") ?? "";
     const reportDate = c.req.query("d") ?? getTodayDateKey();
     const target = new URL(url);
-    if (target.protocol !== "http:" && target.protocol !== "https:") {
+    if (!isSafePublicHttpUrl(target)) {
       return c.text("Invalid URL", 400);
     }
     if (url.length > 1800) {
@@ -626,9 +684,19 @@ app.get("/img", async (c) => {
   if (!raw) return c.text("Missing image URL", 400);
   try {
     const target = new URL(raw);
-    if (!/^https?:$/.test(target.protocol)) return c.text("Invalid URL", 400);
+    if (!isSafePublicHttpUrl(target)) return c.text("Invalid URL", 400);
     const width = clampInt(c.req.query("w"), 1200, 16, 4096);
     const quality = clampInt(c.req.query("q"), 82, 40, 100);
+    const format = pickImageCacheFormat(c.req.header("Accept") ?? undefined);
+    const cacheKey = buildImageProxyCacheKey(c.req.url, target.toString(), width, quality, format);
+    const cache = await caches.open(IMAGE_PROXY_CACHE_NAME);
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const headers = new Headers(cached.headers);
+      headers.set("x-image-cache", "hit");
+      return new Response(cached.body, { status: cached.status, headers });
+    }
+
     const resp = await fetchOptimizedRemoteImage(
       target.toString(),
       { width, quality, accept: c.req.header("Accept") ?? undefined },
@@ -639,16 +707,77 @@ app.get("/img", async (c) => {
     if (!resp.ok || !contentType.toLowerCase().startsWith("image/")) {
       return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
     }
-    return new Response(resp.body, {
+    const out = new Response(resp.body, {
       status: resp.status,
       headers: {
         "content-type": contentType,
-        vary: resp.headers.get("vary") ?? "Accept",
-        "cache-control": "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800"
+        vary: "Accept",
+        "cache-control": IMAGE_PROXY_CACHE_CONTROL,
+        "x-image-cache": "miss"
       }
     });
+    c.executionCtx.waitUntil(cache.put(cacheKey, out.clone()));
+    return out;
   } catch {
     return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
+  }
+});
+
+app.get("/tin/:date/:slug", async (c) => {
+  const reportDate = clampText(c.req.param("date"), 10) ?? "";
+  const slugAndHash = clampText(c.req.param("slug"), 140) ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) return c.text("Invalid article date", 400);
+
+  try {
+    const articles = await getArticlesByDate(c.env.DB, reportDate);
+    const article = findArticleByUrlHash(articles, extractArticleUrlHashFromSlug(slugAndHash));
+    if (!article) return c.text("Article not found", 404);
+
+    const canonicalPath = buildArticleDetailPath(reportDate, article.url, article.title);
+    const requestedPath = new URL(c.req.url).pathname;
+    if (requestedPath !== canonicalPath) return c.redirect(canonicalPath, 301);
+
+    await incrementView(c.env, reportDate, article.url);
+    const [aiAnalysis, hsxMarketSnapshot] = await Promise.all([
+      getOrCreateCachedExplanation(c.env, article).catch((error) => {
+        console.error("article detail AI analysis failed:", error);
+        return null;
+      }),
+      getHSXMarketSnapshot(c.env).catch((error) => {
+        console.error("article detail HSX snapshot failed:", error);
+        return null;
+      })
+    ]);
+    const sentimentLabel = classifySentimentText(`${article.title}\n${article.summaryVi ?? ""}\n${article.snippet}`).label;
+    const canonicalUrl = `${new URL(c.req.url).origin}${canonicalPath}`;
+
+    return c.html(
+      renderArticleDetailPage({
+        title: article.title,
+        sourceName: article.sourceName,
+        publishedAt: article.publishedAt,
+        summaryVi: article.summaryVi ?? "Chưa có tóm tắt.",
+        snippet: article.snippet,
+        imageUrl: article.imageUrl,
+        articleUrl: article.url,
+        sourceUrl: `/go?d=${encodeURIComponent(reportDate)}&u=${encodeURIComponent(article.url)}`,
+        sentimentLabel,
+        aiAnalysis,
+        impactedStocks: analyzeArticleMarketImpact(article, hsxMarketSnapshot),
+        cacheStatus: "miss",
+        appearance: readAppearance(c),
+        returnPath: "/",
+        canonicalUrl
+      }),
+      200,
+      {
+        "cache-control": htmlCacheControl(),
+        "content-language": "vi"
+      }
+    );
+  } catch (error) {
+    console.error("GET /tin/:date/:slug failed:", error);
+    return c.text("Failed to render article", 500);
   }
 });
 
@@ -659,20 +788,26 @@ app.get("/article", async (c) => {
     const parsed = new URL(url);
     if (!/^https?:$/.test(parsed.protocol)) return c.text("Invalid URL", 400);
     const article = await getArticleByUrl(c.env.DB, parsed.toString());
+    if (article) {
+      const queryDate = clampText(c.req.query("d"), 10);
+      const reportDate = queryDate && /^\d{4}-\d{2}-\d{2}$/.test(queryDate) ? queryDate : formatCalendarDateVietnam(article.publishedAt);
+      return c.redirect(buildArticleDetailPath(reportDate, article.url, article.title), 301);
+    }
     const extracted = await fetchAndExtractSource(parsed.toString());
-    const title = article?.title ?? parsed.toString();
-    const summary = article?.summaryVi ?? extracted?.text?.slice(0, 360) ?? "Chưa có tóm tắt.";
-    const snippet = article?.snippet ?? extracted?.text?.slice(0, 800) ?? "";
+    const title = parsed.toString();
+    const summary = extracted?.text?.slice(0, 360) ?? "Chưa có tóm tắt.";
+    const snippet = extracted?.text?.slice(0, 800) ?? "";
     const sentimentLabel = classifySentimentText(`${title}\n${summary}\n${snippet}`).label;
     const canonicalUrl = buildCanonicalUrl(c.req.url, ["d", "u"]);
     return c.html(
       renderArticleDetailPage({
         title,
-        sourceName: article?.sourceName ?? parsed.hostname,
-        publishedAt: article?.publishedAt ?? new Date().toISOString(),
+        sourceName: parsed.hostname,
+        publishedAt: new Date().toISOString(),
         summaryVi: summary,
         snippet,
-        imageUrl: article?.imageUrl ?? extracted?.imageUrl ?? null,
+        imageUrl: extracted?.imageUrl ?? null,
+        articleUrl: parsed.toString(),
         sourceUrl: `/go?d=${encodeURIComponent(getTodayDateKey())}&u=${encodeURIComponent(parsed.toString())}`,
         sentimentLabel,
         cacheStatus: "miss",
@@ -798,6 +933,39 @@ app.get("/api/news/explain", async (c) => {
   } catch (error) {
     console.error("GET /api/news/explain failed:", error);
     return c.json({ error: "Failed to explain news" }, 500);
+  }
+});
+
+app.get("/api/news/translate", async (c) => {
+  try {
+    const url = clampText(c.req.query("u"), 1800);
+    if (!url) return c.json({ error: "Missing article URL" }, 400);
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) return c.json({ error: "Invalid URL" }, 400);
+    const canonicalUrl = parsed.toString();
+    const article = await getArticleByUrl(c.env.DB, canonicalUrl);
+    const translatePayload = article
+      ? article
+      : await (async () => {
+          const media = await getMediaItemByUrl(c.env.DB, canonicalUrl);
+          if (!media) return null;
+          return {
+            title: media.title,
+            sourceName: media.sourceName,
+            url: media.url,
+            summaryVi: media.summaryVi,
+            snippet: media.summaryVi?.trim() ? media.summaryVi : media.title
+          };
+        })();
+    if (!translatePayload) return c.json({ error: "Article not found" }, 404);
+    const aiAnalysis = await getOrCreateCachedExplanation(c.env, translatePayload).catch(() => null);
+    const translation = await getOrCreateEnglishArticleTranslation(c.env, translatePayload, aiAnalysis);
+    return c.json({ ok: true, language: "en", translation }, 200, {
+      "cache-control": "public, s-maxage=300, stale-while-revalidate=1800, stale-if-error=3600"
+    });
+  } catch (error) {
+    console.error("GET /api/news/translate failed:", error);
+    return c.json({ error: "Failed to translate news" }, 500);
   }
 });
 
@@ -1127,7 +1295,7 @@ app.get("/sitemap.xml", async (c) => {
       const u = row.url?.trim() ?? "";
       if (!u || u.length > 1800) continue;
       const reportDate = formatCalendarDateVietnam(row.publishedAt);
-      const path = buildArticleDetailPath(reportDate, u);
+      const path = buildArticleDetailPath(reportDate, u, row.title);
       const loc = `${origin}${path}`;
       if (loc.length > 2048) continue;
       entries.push({
@@ -1356,6 +1524,61 @@ app.post("/admin/refresh", async (c) => {
   } catch (error) {
     console.error("POST /admin/refresh failed:", error);
     return c.json({ error: "Refresh failed" }, 500);
+  }
+});
+
+/** Xóa cache AI (phân tích / dịch) và tính lại phần precompute cho top bài. `scope=today|all`, `max` = số bài precompute (≤200). */
+app.post("/admin/reanalyze-ai", async (c) => {
+  if (!isAdminAuthorized(c)) {
+    return jsonUnauthorizedWithResourceMetadata(c);
+  }
+
+  try {
+    const dateRaw = (c.req.query("date") ?? "").trim();
+    const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : getTodayDateKey();
+    const scope = (c.req.query("scope") ?? "today").trim().toLowerCase();
+    const maxRaw = Number.parseInt((c.req.query("max") ?? "200").trim(), 10);
+    const maxArticles = Number.isFinite(maxRaw) ? Math.min(200, Math.max(1, maxRaw)) : 200;
+    const withTranslations = (c.req.query("translations") ?? "").trim() === "1";
+
+    const articles =
+      scope === "all"
+        ? await listRecentStoredArticles(c.env.DB, 500)
+        : await getArticlesByDate(c.env.DB, reportDate);
+
+    if (!articles.length) {
+      return c.json({ ok: true, message: "no-articles", explainKeysPurged: 0, precompute: null }, 200);
+    }
+
+    const urls = articles.map((a) => a.url);
+    const explainKeysPurged = await purgeCachedNewsExplanations(c.env, urls);
+    await purgeNewsExplainRefreshState(c.env);
+    let translationKeysPurged = 0;
+    if (withTranslations) {
+      translationKeysPurged = await purgeArticleTranslationCachesForUrls(c.env, urls);
+    }
+
+    const precompute = await precomputeExplainCacheIfNeeded(c.env, reportDate, articles, {
+      force: true,
+      maxArticles
+    });
+
+    return c.json(
+      {
+        ok: true,
+        reportDate,
+        scope,
+        articleCount: articles.length,
+        explainKeysPurged,
+        translationKeysPurged,
+        precompute
+      },
+      200,
+      { "cache-control": "no-store" }
+    );
+  } catch (error) {
+    console.error("POST /admin/reanalyze-ai failed:", error);
+    return c.json({ error: "reanalyze-ai failed" }, 500);
   }
 });
 
@@ -1686,7 +1909,7 @@ function renderUnauthorizedAdmin(appearance: Appearance): string {
   body.appBody{font-family:var(--font-body);background:var(--bg);margin:0;padding:16px;color:var(--text)}
   .topNavRow{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
   .card{max-width:520px;margin:48px auto;background:var(--surface);border-radius:16px;padding:18px;box-shadow:var(--shadow);border:1px solid var(--border)}input,button{width:100%;padding:12px;border-radius:12px;font:inherit}input{border:1px solid var(--border);margin:10px 0 12px;background:var(--surface);color:var(--text)}button{border:0;background:var(--primary);color:#fff;font-weight:700}</style></head>
-  <body class="appBody"><div class="topNavRow">${sw}</div><main class="card"><h1>Cần token quản trị</h1><p>Nhập token để truy cập trang quản trị.</p><form method="GET" action="/admin/login"><input name="token" type="password" placeholder="ADMIN_REFRESH_TOKEN" required /><button type="submit">Mở đăng nhập</button></form></main></body></html>`;
+  <body class="appBody"><div class="topNavRow">${sw}</div><main class="card"><h1>Cần token quản trị</h1><p>Nhập token để truy cập trang quản trị.</p><form method="POST" action="/admin/login"><input name="token" type="password" placeholder="ADMIN_REFRESH_TOKEN" required /><button type="submit">Mở đăng nhập</button></form></main></body></html>`;
 }
 
 function clampText(input: string | undefined, maxLen: number): string | undefined {
@@ -1720,4 +1943,67 @@ function withPriorityKeywords(base: string[], priority: string[], max: number): 
   for (const p of priority) push(p);
   for (const b of base) push(b);
   return out.slice(0, max);
+}
+
+function isSafePublicHttpUrl(url: URL): boolean {
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  if (url.username || url.password) return false;
+  const host = url.hostname.toLowerCase();
+  if (!host || host === "localhost" || host === "::1" || host.endsWith(".localhost") || host.endsWith(".local")) return false;
+  if (isBlockedIpv6Host(host)) return false;
+  if (host === "metadata.google.internal") return false;
+  const ipv4 = parseIpv4(host);
+  if (!ipv4) return true;
+  const [a, b] = ipv4;
+  if (a === 0 || a === 10 || a === 127) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && (b === 0 || b === 168)) return false;
+  if (a === 198 && (b === 18 || b === 19)) return false;
+  if (a >= 224) return false;
+  return true;
+}
+
+function pickImageCacheFormat(acceptHeader: string | undefined): "avif" | "webp" | "jpeg" {
+  const accept = (acceptHeader ?? "").toLowerCase();
+  if (accept.includes("image/avif")) return "avif";
+  if (accept.includes("image/webp")) return "webp";
+  return "jpeg";
+}
+
+function buildImageProxyCacheKey(requestUrl: string, sourceUrl: string, width: number, quality: number, format: string): Request {
+  const url = new URL(requestUrl);
+  url.search = "";
+  url.searchParams.set("u", sourceUrl);
+  url.searchParams.set("w", String(width));
+  url.searchParams.set("q", String(quality));
+  url.searchParams.set("fmt", format);
+  return new Request(url.toString(), { method: "GET" });
+}
+
+function isBlockedIpv6Host(host: string): boolean {
+  const h = host.replace(/^\[/, "").replace(/\]$/, "");
+  if (!h.includes(":")) return false;
+  return (
+    h === "::1" ||
+    h === "::" ||
+    h.startsWith("fc") ||
+    h.startsWith("fd") ||
+    h.startsWith("fe80:") ||
+    h.startsWith("::ffff:7f") ||
+    h.startsWith("::ffff:0a") ||
+    h.startsWith("::ffff:a9fe")
+  );
+}
+
+function parseIpv4(host: string): [number, number, number, number] | null {
+  const parts = host.split(".");
+  if (parts.length !== 4) return null;
+  const nums = parts.map((part) => {
+    if (!/^\d{1,3}$/.test(part)) return Number.NaN;
+    return Number.parseInt(part, 10);
+  });
+  if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  return nums as [number, number, number, number];
 }

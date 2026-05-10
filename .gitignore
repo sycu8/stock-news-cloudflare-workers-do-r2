@@ -1,5 +1,6 @@
 node_modules/
 .wrangler/
+.tmp-test/
 .dev.vars
 .env
 .env.*

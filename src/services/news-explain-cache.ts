@@ -3,7 +3,7 @@ import { getFxMarketSnapshot, getGoldMarketSnapshot } from "./market-extra";
 import { getHSXMarketSnapshot } from "./hsx-market";
 import { explainNewsImpact } from "./summarizer";
 
-const EXPLAIN_CACHE_PREFIX = "news-explain:v1";
+const EXPLAIN_CACHE_PREFIX = "news-explain:v2";
 const EXPLAIN_REFRESH_STATE_KEY = `${EXPLAIN_CACHE_PREFIX}:refresh-state`;
 const EXPLAIN_TTL_SECONDS = 60 * 60 * 12;
 const EXPLAIN_MAX_AGE_MS = 30 * 60 * 1000;
@@ -44,10 +44,24 @@ export async function getOrCreateCachedExplanation(
   return explanation;
 }
 
+export async function purgeCachedNewsExplanations(env: Env, articleUrls: string[]): Promise<number> {
+  let deleted = 0;
+  for (const url of articleUrls) {
+    await env.CACHE.delete(cacheKeyForUrl(url));
+    deleted += 1;
+  }
+  return deleted;
+}
+
+export async function purgeNewsExplainRefreshState(env: Env): Promise<void> {
+  await env.CACHE.delete(EXPLAIN_REFRESH_STATE_KEY);
+}
+
 export async function precomputeExplainCacheIfNeeded(
   env: Env,
   reportDate: string,
-  articles: StoredArticle[]
+  articles: StoredArticle[],
+  options?: { force?: boolean; maxArticles?: number }
 ): Promise<{ refreshed: boolean; reason: string; signature: string }> {
   if (!articles.length) {
     return { refreshed: false, reason: "no-articles", signature: "none" };
@@ -56,8 +70,9 @@ export async function precomputeExplainCacheIfNeeded(
   const stateRaw = await env.CACHE.get(EXPLAIN_REFRESH_STATE_KEY, "json");
   const state = isRefreshState(stateRaw) ? stateRaw : null;
   const ageMs = state ? Math.max(0, Date.now() - Date.parse(state.generatedAt)) : Number.POSITIVE_INFINITY;
-  const reason =
-    !state
+  const reason = options?.force
+    ? "admin-force"
+    : !state
       ? "first-build"
       : state.marketSignature !== signature
         ? "market-changed"
@@ -69,10 +84,11 @@ export async function precomputeExplainCacheIfNeeded(
     return { refreshed: false, reason: "fresh-cache", signature };
   }
 
+  const cap = Math.min(Math.max(1, options?.maxArticles ?? EXPLAIN_PRECOMPUTE_LIMIT), 200);
   const targetArticles = articles
     .slice()
     .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
-    .slice(0, EXPLAIN_PRECOMPUTE_LIMIT);
+    .slice(0, cap);
   const marketContext = buildMarketContextFromSignature(signature);
 
   for (let i = 0; i < targetArticles.length; i += EXPLAIN_PRECOMPUTE_CONCURRENCY) {
