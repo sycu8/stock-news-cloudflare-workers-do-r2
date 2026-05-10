@@ -53,7 +53,6 @@ import {
   purgeCachedNewsExplanations,
   purgeNewsExplainRefreshState
 } from "./services/news-explain-cache";
-import { getOrCreateEnglishArticleTranslation, purgeArticleTranslationCachesForUrls } from "./services/article-translation";
 import { analyzeArticleMarketImpact } from "./services/article-impact";
 import {
   apiCatalogContentType,
@@ -77,7 +76,11 @@ import {
   w3cDateFromIso,
   type SitemapUrlEntry
 } from "./services/sitemap";
-import { extractArticleUrlHashFromSlug, findArticleByUrlHash } from "./services/article-routing";
+import {
+  buildArticleDetailHrefFromPublished,
+  extractArticleUrlHashFromSlug,
+  findArticleByUrlHash
+} from "./services/article-routing";
 import { formatCalendarDateVietnam, reportDayStartIso } from "./utils/date";
 import { buildLivePollJson } from "./services/live-poll";
 import {
@@ -289,8 +292,7 @@ app.on(["GET", "HEAD"], "/", async (c) => {
           const pageSlice = remaining.slice(pageOffset, pageOffset + pageSize);
           const visibleRemaining = isFirstPage ? pageSlice.slice(0, restLimit) : pageSlice.slice(0, maxVisible);
 
-          const redirectify = (url: string) => `/go?d=${encodeURIComponent(feed.reportDate)}&u=${encodeURIComponent(url)}`;
-          const detailify = (article: { url: string; title: string }) => buildArticleDetailPath(feed.reportDate, article.url, article.title);
+          const detailify = (article: { url: string; title: string; publishedAt: string }) => buildArticleDetailHrefFromPublished(article);
           const withSentiment = <T extends { title: string; summaryVi: string | null; snippet: string }>(a: T) => ({
             ...a,
             sentimentLabel: classifySentimentText(`${a.title}\n${a.summaryVi ?? ""}\n${a.snippet}`).label
@@ -299,7 +301,6 @@ app.on(["GET", "HEAD"], "/", async (c) => {
             ? pinned.slice(0, pinnedMax).map((a) =>
                 withSentiment({
                   ...a,
-                  sourceUrl: redirectify(a.url),
                   detailUrl: detailify(a)
                 })
               )
@@ -307,7 +308,6 @@ app.on(["GET", "HEAD"], "/", async (c) => {
           const remainingForUi = visibleRemaining.map((a) =>
             withSentiment({
               ...a,
-              sourceUrl: redirectify(a.url),
               detailUrl: detailify(a)
             })
           );
@@ -936,39 +936,6 @@ app.get("/api/news/explain", async (c) => {
   }
 });
 
-app.get("/api/news/translate", async (c) => {
-  try {
-    const url = clampText(c.req.query("u"), 1800);
-    if (!url) return c.json({ error: "Missing article URL" }, 400);
-    const parsed = new URL(url);
-    if (!/^https?:$/.test(parsed.protocol)) return c.json({ error: "Invalid URL" }, 400);
-    const canonicalUrl = parsed.toString();
-    const article = await getArticleByUrl(c.env.DB, canonicalUrl);
-    const translatePayload = article
-      ? article
-      : await (async () => {
-          const media = await getMediaItemByUrl(c.env.DB, canonicalUrl);
-          if (!media) return null;
-          return {
-            title: media.title,
-            sourceName: media.sourceName,
-            url: media.url,
-            summaryVi: media.summaryVi,
-            snippet: media.summaryVi?.trim() ? media.summaryVi : media.title
-          };
-        })();
-    if (!translatePayload) return c.json({ error: "Article not found" }, 404);
-    const aiAnalysis = await getOrCreateCachedExplanation(c.env, translatePayload).catch(() => null);
-    const translation = await getOrCreateEnglishArticleTranslation(c.env, translatePayload, aiAnalysis);
-    return c.json({ ok: true, language: "en", translation }, 200, {
-      "cache-control": "public, s-maxage=300, stale-while-revalidate=1800, stale-if-error=3600"
-    });
-  } catch (error) {
-    console.error("GET /api/news/translate failed:", error);
-    return c.json({ error: "Failed to translate news" }, 500);
-  }
-});
-
 app.get("/api/hsx/vnindex-chart", async (c) => {
   try {
     const range = clampText(c.req.query("range"), 2);
@@ -1527,7 +1494,7 @@ app.post("/admin/refresh", async (c) => {
   }
 });
 
-/** Xóa cache AI (phân tích / dịch) và tính lại phần precompute cho top bài. `scope=today|all`, `max` = số bài precompute (≤200). */
+/** Xóa cache AI phân tích và tính lại phần precompute cho top bài. `scope=today|all`, `max` = số bài precompute (≤200). */
 app.post("/admin/reanalyze-ai", async (c) => {
   if (!isAdminAuthorized(c)) {
     return jsonUnauthorizedWithResourceMetadata(c);
@@ -1539,7 +1506,6 @@ app.post("/admin/reanalyze-ai", async (c) => {
     const scope = (c.req.query("scope") ?? "today").trim().toLowerCase();
     const maxRaw = Number.parseInt((c.req.query("max") ?? "200").trim(), 10);
     const maxArticles = Number.isFinite(maxRaw) ? Math.min(200, Math.max(1, maxRaw)) : 200;
-    const withTranslations = (c.req.query("translations") ?? "").trim() === "1";
 
     const articles =
       scope === "all"
@@ -1553,10 +1519,6 @@ app.post("/admin/reanalyze-ai", async (c) => {
     const urls = articles.map((a) => a.url);
     const explainKeysPurged = await purgeCachedNewsExplanations(c.env, urls);
     await purgeNewsExplainRefreshState(c.env);
-    let translationKeysPurged = 0;
-    if (withTranslations) {
-      translationKeysPurged = await purgeArticleTranslationCachesForUrls(c.env, urls);
-    }
 
     const precompute = await precomputeExplainCacheIfNeeded(c.env, reportDate, articles, {
       force: true,
@@ -1570,7 +1532,6 @@ app.post("/admin/reanalyze-ai", async (c) => {
         scope,
         articleCount: articles.length,
         explainKeysPurged,
-        translationKeysPurged,
         precompute
       },
       200,

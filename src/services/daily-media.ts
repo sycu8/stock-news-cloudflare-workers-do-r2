@@ -82,11 +82,11 @@ export async function refreshDailyMedia(env: Env, reportDate: string, articles: 
   await syncVietstockMediaItemsIntoArticles(env.DB, finalItems);
 }
 
-/** Đưa tin Vietstock từ khối “Bản tin vắn & media” vào bảng articles để có trang /tin/... và AI phân tích giống bài RSS chính. */
+/** Đưa tin từ RSS media (URL gốc .vn) vào bảng articles để có trang /tin/... và AI phân tích giống bài RSS chính. */
 export async function syncVietstockMediaItemsIntoArticles(db: D1Database, items: MediaItemRecord[]): Promise<number> {
   let insertedOrUpdated = 0;
   for (const item of items) {
-    if (!isVietstockVnUrl(item.url)) continue;
+    if (!isVietnameseNewsOriginUrl(item.url)) continue;
     const snippet = item.summaryVi?.trim() ? item.summaryVi.trim() : item.title;
     const row: NormalizedArticle = {
       sourceId: item.sourceId,
@@ -111,10 +111,12 @@ export async function syncVietstockMediaItemsIntoArticles(db: D1Database, items:
   return insertedOrUpdated;
 }
 
-function isVietstockVnUrl(url: string): boolean {
+function isVietnameseNewsOriginUrl(url: string): boolean {
   try {
-    const host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
-    return host === "vietstock.vn" || host.endsWith(".vietstock.vn");
+    const u = url.trim().replace(/^\/\//u, "https:");
+    const host = new URL(u).hostname.replace(/^www\./i, "").toLowerCase();
+    if (host.includes("youtube.com") || host.includes("youtu.be")) return false;
+    return host.endsWith(".vn") || host === "vietnam.vn";
   } catch {
     return false;
   }
@@ -202,4 +204,3 @@ function pickImage(item: FeedItem, description: string): string | null {
   const imgMatch = description.match(/<img[^>]+src=["']([^"']+)["']/i);
   return imgMatch?.[1] ?? null;
 }
-

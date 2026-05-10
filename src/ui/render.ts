@@ -21,19 +21,25 @@ import { getTodayDateKey } from "../db";
 import { buildHomeJsonLd, buildMarketingAttributionCookieScript } from "./seo";
 import type { ArticleImpactStock } from "../services/article-impact";
 import { cleanAiAnalysisForDisplay, hasUsefulAiAnalysis, parseAiAnalysisSections, shareCtaLabel } from "../services/article-detail-ui";
-import { buildArticleDetailPath } from "../services/article-routing";
+import { buildArticleDetailHrefFromPublished } from "../services/article-routing";
 
-function vietstockInternalReaderHref(item: MediaItemRecord, reportDate: string): { href: string; external: boolean } {
-  try {
-    const host = new URL(item.url).hostname.replace(/^www\./i, "").toLowerCase();
-    const isVietstock = host === "vietstock.vn" || host.endsWith(".vietstock.vn");
-    if (isVietstock) {
-      return { href: buildArticleDetailPath(reportDate, item.url, item.title), external: false };
-    }
-  } catch {
-    /* keep external */
+/** Trên trang chủ không dùng href ra báo gốc: luôn dẫn tới vietstock `/tin/...` (đồng bộ RSS/media → articles). */
+function homeStoredArticleHref(article: StoredArticle): string {
+  const withDetail = article as StoredArticle & { detailUrl?: string };
+  if (withDetail.detailUrl?.trim()) return withDetail.detailUrl.trim();
+  return buildArticleDetailHrefFromPublished(article);
+}
+
+function homeMediaDetailHref(item: MediaItemRecord, fallbackReportDateKey: string): string {
+  let publishedAt = item.publishedAt;
+  if (!publishedAt?.trim() || Number.isNaN(Date.parse(publishedAt))) {
+    publishedAt = `${fallbackReportDateKey}T12:00:00.000Z`;
   }
-  return { href: item.url, external: true };
+  return buildArticleDetailHrefFromPublished({
+    url: item.url,
+    title: item.title,
+    publishedAt
+  });
 }
 
 interface HomePageParams {
@@ -113,12 +119,8 @@ export function renderHomePage({
     return `<span class="impactPill" title="Điểm tác động tin (heuristic, không phải khuyến nghị)">${v}</span>`;
   };
   const primaryArticleLink = (article: StoredArticle): string => {
-    const detailUrl = (article as StoredArticle & { detailUrl?: string }).detailUrl;
-    if (detailUrl) {
-      return `<a class="source-link" href="${escapeAttribute(detailUrl)}"><span>Đọc bài viết</span></a>`;
-    }
-    const sourceUrl = (article as StoredArticle & { sourceUrl?: string }).sourceUrl ?? article.url;
-    return `<a class="source-link" href="${escapeAttribute(sourceUrl)}" target="_blank" rel="noopener noreferrer"><span>Đọc bài viết</span></a>`;
+    const href = homeStoredArticleHref(article);
+    return `<a class="source-link" href="${escapeAttribute(href)}"><span>Đọc bài viết</span></a>`;
   };
   const pinnedCards = pinnedArticles
     .map(
@@ -136,11 +138,7 @@ export function renderHomePage({
             fetchpriority: idx === 0 ? "high" : "auto",
             sizes: "(max-width: 768px) 100vw, 33vw"
           })}
-          <h3>${
-            (article as StoredArticle & { detailUrl?: string }).detailUrl
-              ? `<a href="${escapeAttribute((article as StoredArticle & { detailUrl?: string }).detailUrl ?? "#")}">${escapeHtml(article.title)}</a>`
-              : escapeHtml(article.title)
-          }</h3>
+          <h3><a href="${escapeAttribute(homeStoredArticleHref(article))}">${escapeHtml(article.title)}</a></h3>
           ${renderSentimentBadge((article as StoredArticle & { sentimentLabel?: string }).sentimentLabel ?? classifySentimentText(`${article.title} ${article.summaryVi ?? ""} ${article.snippet}`).label)}
           ${renderConfirmationBadge(article)}
           ${renderMergedSources(article)}
@@ -172,11 +170,7 @@ export function renderHomePage({
             fetchpriority: idx === 0 && pinnedArticles.length === 0 ? "high" : "auto",
             sizes: "(max-width: 768px) 100vw, 33vw"
           })}
-          <h3>${
-            (article as StoredArticle & { detailUrl?: string }).detailUrl
-              ? `<a href="${escapeAttribute((article as StoredArticle & { detailUrl?: string }).detailUrl ?? "#")}">${escapeHtml(article.title)}</a>`
-              : escapeHtml(article.title)
-          }</h3>
+          <h3><a href="${escapeAttribute(homeStoredArticleHref(article))}">${escapeHtml(article.title)}</a></h3>
           ${renderSentimentBadge((article as StoredArticle & { sentimentLabel?: string }).sentimentLabel ?? classifySentimentText(`${article.title} ${article.summaryVi ?? ""} ${article.snippet}`).label)}
           ${renderConfirmationBadge(article)}
           ${renderMergedSources(article)}
@@ -210,28 +204,26 @@ export function renderHomePage({
   const mediaCards = visualMediaItems
     .map(
       (item) => {
-        const readLink = vietstockInternalReaderHref(item, articleDateKey);
-        const titleHtml = readLink.external
-          ? escapeHtml(item.title)
-          : `<a href="${escapeAttribute(readLink.href)}">${escapeHtml(item.title)}</a>`;
+        const detailHref = homeMediaDetailHref(item, articleDateKey);
+        const titleHtml = `<a href="${escapeAttribute(detailHref)}">${escapeHtml(item.title)}</a>`;
         return `
         <article class="mediaCard">
           ${
             item.imageUrl
-              ? renderResponsiveImage(item.imageUrl, "mediaThumb", item.title, {
+              ? `<a class="mediaThumbLink" href="${escapeAttribute(detailHref)}">${renderResponsiveImage(item.imageUrl, "mediaThumb", item.title, {
                   width: 1200,
                   height: 675,
                   loading: "lazy",
                   fetchpriority: "auto",
                   sizes: "(max-width: 768px) 100vw, 50vw"
-                })
+                })}</a>`
               : `<div class="mediaThumb mediaThumbFallback">${item.kind === "youtube" ? "YouTube" : "Tin nhanh"}</div>`
           }
           <div class="mediaBody">
             <p class="meta">${escapeHtml(item.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(item.publishedAt))}</p>
             <h3>${titleHtml}</h3>
             <div class="mediaCardActions">
-              <a class="source-link" href="${escapeAttribute(item.url)}" target="_blank" rel="noopener noreferrer"><span>Xem nguồn</span></a>
+              <a class="source-link" href="${escapeAttribute(detailHref)}"><span>Đọc bài viết</span></a>
               <button class="aiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button>
             </div>
           </div>
@@ -246,9 +238,8 @@ export function renderHomePage({
     .map(
       (item) => {
         const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
-        const readLink = vietstockInternalReaderHref(item, articleDateKey);
-        const targetRel = readLink.external ? ` target="_blank" rel="noopener noreferrer"` : ` rel="noopener"`;
-        return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(readLink.href)}"${targetRel}>${escapeHtml(item.title)}</a><span class="briefTypeBadge domestic">Trong nước</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button></li>`;
+        const detailHref = homeMediaDetailHref(item, articleDateKey);
+        return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(detailHref)}" rel="noopener">${escapeHtml(item.title)}</a><span class="briefTypeBadge domestic">Trong nước</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button></li>`;
       }
     )
     .join("");
@@ -256,9 +247,8 @@ export function renderHomePage({
   const internationalBriefBullets = internationalVnBriefItems
     .map((item) => {
       const briefSentiment = classifySentimentText(`${item.title} ${item.summaryVi}`);
-      const readLink = vietstockInternalReaderHref(item, articleDateKey);
-      const targetRel = readLink.external ? ` target="_blank" rel="noopener noreferrer"` : ` rel="noopener"`;
-      return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(readLink.href)}"${targetRel}>${escapeHtml(item.title)}</a><span class="briefTypeBadge international">Quốc tế</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button></li>`;
+      const detailHref = homeMediaDetailHref(item, articleDateKey);
+      return `<li><strong>${escapeHtml(item.sourceName)}:</strong> <a href="${escapeAttribute(detailHref)}" rel="noopener">${escapeHtml(item.title)}</a><span class="briefTypeBadge international">Quốc tế</span> ${renderSentimentBadge(briefSentiment.label)} ${renderBriefVerificationBadge(item, briefVerificationMap)} <button class="aiExplainBtn briefAiExplainBtn" type="button" data-ai-explain-url="${escapeAttribute(item.url)}">AI phân tích</button></li>`;
     })
     .join("");
   const calendarTypeLabel = (type: "dividend" | "agm" | "earnings" | "etf_review" | "derivatives_expiry"): string =>
@@ -717,6 +707,8 @@ export function renderHomePage({
       /* Daily media */
       .mediaGrid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:12px; }
       .mediaCard{ background: var(--surface2); border:1px solid var(--border); border-radius: 14px; overflow:hidden; }
+      .mediaThumbLink{ display:block; line-height:0; text-decoration:none; color:inherit; }
+      .mediaThumbLink:focus-visible{ outline:2px solid var(--primary2); outline-offset:2px; }
       .mediaThumb{ display:block; width:100%; aspect-ratio: 16/9; max-height: 200px; object-fit: cover; background:#d0d5dd; }
       .mediaThumbFallback{ display:flex; align-items:center; justify-content:center; font-weight:700; color: var(--muted); }
       .mediaBody{ padding:12px; }
@@ -1959,7 +1951,6 @@ export function renderArticleDetailPage(params: {
   const shareUrl = canonical.startsWith("http") ? canonical : `https://vietstock.info${canonical.startsWith("/") ? canonical : `/${canonical}`}`;
   const shareTitle = `${p.title} | vietstock.info`;
   const impactedStocks = p.impactedStocks ?? [];
-  const articleUrlForTranslation = p.articleUrl ?? p.sourceUrl;
   const cleanedAiAnalysis = cleanAiAnalysisForDisplay(p.aiAnalysis);
   const aiAnalysisHtml = hasUsefulAiAnalysis(cleanedAiAnalysis)
     ? `<section class="articlePanel aiPanel"><h2>AI phân tích nhanh</h2><div class="analysisBody">${renderAiAnalysisSections(cleanedAiAnalysis)}</div><p class="note">Nội dung do AI hỗ trợ tổng hợp, không phải khuyến nghị đầu tư.</p></section>`
@@ -2025,14 +2016,6 @@ export function renderArticleDetailPage(params: {
     .analysisSectionTitle{margin:0 0 6px;font-size:.96rem;font-weight:800;color:var(--text)}
     .analysisSection ul{padding-left:18px;margin:0;display:grid;gap:6px}
     .analysisSection li{padding-left:2px}
-    .englishPanel{display:grid;gap:10px}
-    .englishActions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-    .englishTranslateBtn{appearance:none;border:1px solid var(--primary);border-radius:8px;background:var(--primary);color:#fff;padding:8px 10px;font-weight:800;font-size:.9rem;cursor:pointer}
-    .englishTranslateBtn:disabled{opacity:.68;cursor:wait}
-    .englishResult{display:none;border-top:1px solid var(--border);padding-top:10px}
-    .englishResult.visible{display:block}
-    .englishResult h3{margin:0 0 6px;font-size:1rem}
-    .englishResult ul{padding-left:18px;margin:8px 0;display:grid;gap:6px}
     .note{color:var(--muted);font-size:.86rem;margin-bottom:0}
     .impactStockGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
     .impactStock{border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--surface)}
@@ -2068,14 +2051,6 @@ export function renderArticleDetailPage(params: {
       <p><strong>Tóm tắt:</strong> ${escapeHtml(p.summaryVi)}</p>
       <p><strong>Nội dung trích:</strong> ${escapeHtml(p.snippet)}</p>
       ${aiAnalysisHtml}
-      <section class="articlePanel englishPanel">
-        <h2>English for foreign investors</h2>
-        <div class="englishActions">
-          <button class="englishTranslateBtn" type="button" data-translate-url="${escapeAttribute(articleUrlForTranslation)}">Translate to English</button>
-          <span class="meta">Concise English version for international investors.</span>
-        </div>
-        <div class="englishResult" id="englishTranslationResult" aria-live="polite"></div>
-      </section>
       ${stockImpactHtml}
       <div class="shareRow" aria-label="Chia sẻ bài viết">
         <span class="shareLabel">${escapeHtml(shareCtaLabel())}</span>
@@ -2102,40 +2077,6 @@ export function renderArticleDetailPage(params: {
         }
       });
     });
-    document.querySelectorAll(".englishTranslateBtn").forEach(function(btn){
-      btn.addEventListener("click", async function(){
-        var url = btn.getAttribute("data-translate-url") || "";
-        var target = document.getElementById("englishTranslationResult");
-        if (!target || !url) return;
-        btn.disabled = true;
-        btn.textContent = "Translating...";
-        target.classList.add("visible");
-        target.innerHTML = '<p class="meta">Preparing English translation...</p>';
-        try {
-          var resp = await fetch("/api/news/translate?u=" + encodeURIComponent(url), { headers: { "accept": "application/json" } });
-          if (!resp.ok) throw new Error("translate_failed");
-          var data = await resp.json();
-          var t = data.translation || {};
-          var analysis = String(t.analysis || "").split(/\\r?\\n/).map(function(line){ return line.replace(/^\\s*[-*•]+\\s*/, "").trim(); }).filter(Boolean);
-          target.innerHTML =
-            '<h3>' + escapeClientHtml(String(t.title || "English translation")) + '</h3>' +
-            '<p>' + escapeClientHtml(String(t.summary || "")) + '</p>' +
-            (analysis.length ? '<ul>' + analysis.map(function(line){ return '<li>' + escapeClientHtml(line) + '</li>'; }).join("") + '</ul>' : '') +
-            '<p class="note">AI-assisted translation for context only, not investment advice.</p>';
-          btn.textContent = "Refresh English";
-        } catch {
-          target.innerHTML = '<p class="meta">English translation is temporarily unavailable. Please try again later.</p>';
-          btn.textContent = "Translate to English";
-        } finally {
-          btn.disabled = false;
-        }
-      });
-    });
-    function escapeClientHtml(value){
-      return value.replace(/[&<>"']/g, function(ch){
-        return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[ch] || ch;
-      });
-    }
   </script></body></html>`;
 }
 

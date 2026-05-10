@@ -1,4 +1,5 @@
 import type { DailyReport, StoredArticle } from "../types";
+import { buildArticleDetailHrefFromPublished } from "../services/article-routing";
 
 export function generateTodayRssXml(params: {
   baseUrl: string;
@@ -12,18 +13,21 @@ export function generateTodayRssXml(params: {
     ? `${baseUrl}/?source=${encodeURIComponent(sourceFilter)}`
     : `${baseUrl}/`;
 
+  const base = baseUrl.replace(/\/+$/, "");
+
   const rssItems = articles
     .slice(0, 50)
     .map((a) => {
       const pubDate = new Date(a.publishedAt).toUTCString();
       const title = escapeXml(a.title);
-      const link = escapeXml(a.url);
+      const path = buildArticleDetailHrefFromPublished(a);
+      const link = escapeXml(`${base}${path}`);
       const desc = escapeXml(a.summaryVi ?? a.snippet);
       return `
     <item>
       <title>${title}</title>
       <link>${link}</link>
-      <guid isPermaLink="false">${link}</guid>
+      <guid isPermaLink="true">${link}</guid>
       <pubDate>${escapeXml(pubDate)}</pubDate>
       <description>${desc}</description>
     </item>`;

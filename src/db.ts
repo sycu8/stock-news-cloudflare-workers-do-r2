@@ -220,6 +220,85 @@ export async function listRecentStoredArticles(db: D1Database, limit: number): P
   }));
 }
 
+/** Pagination for bulk jobs / admin exports. Limit ≤ 100 per call. */
+export async function listStoredArticlesPaged(db: D1Database, offset: number, limit: number): Promise<StoredArticle[]> {
+  const cap = Math.min(Math.max(1, limit), 100);
+  const off = Math.max(0, offset);
+  const { results } = await db
+    .prepare(
+      `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
+       FROM articles
+       ORDER BY published_at DESC
+       LIMIT ?1 OFFSET ?2`
+    )
+    .bind(cap, off)
+    .all<D1ResultRow>();
+  const rows = results ?? [];
+  return rows.map((row) => ({
+    id: row.id,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    title: row.title,
+    url: row.url,
+    publishedAt: row.published_at,
+    snippet: row.snippet ?? "",
+    contentLimited: row.content_limited === 1,
+    summaryVi: row.summary_vi,
+    imageUrl: row.image_url ?? null
+  }));
+}
+
+/** Total rows in articles (cheap COUNT for pagination). */
+export async function countAllArticles(db: D1Database): Promise<number> {
+  const row = await db.prepare(`SELECT COUNT(*) as cnt FROM articles`).first<{ cnt: number }>();
+  return row?.cnt ?? 0;
+}
+
+export async function countArticlesForReportDay(db: D1Database, reportDate: string): Promise<number> {
+  const bounds = vietnamReportDayUtcIsoRange(reportDate);
+  if (!bounds) return 0;
+  const row = await db
+    .prepare(`SELECT COUNT(*) as cnt FROM articles WHERE published_at BETWEEN ?1 AND ?2`)
+    .bind(bounds.start, bounds.end)
+    .first<{ cnt: number }>();
+  return row?.cnt ?? 0;
+}
+
+export async function listArticlesForReportDayPaged(
+  db: D1Database,
+  reportDate: string,
+  offset: number,
+  limit: number
+): Promise<StoredArticle[]> {
+  const bounds = vietnamReportDayUtcIsoRange(reportDate);
+  if (!bounds) return [];
+  const cap = Math.min(Math.max(1, limit), 100);
+  const off = Math.max(0, offset);
+  const { results } = await db
+    .prepare(
+      `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
+       FROM articles
+       WHERE published_at BETWEEN ?1 AND ?2
+       ORDER BY published_at DESC
+       LIMIT ?3 OFFSET ?4`
+    )
+    .bind(bounds.start, bounds.end, cap, off)
+    .all<D1ResultRow>();
+  const rows = results ?? [];
+  return rows.map((row) => ({
+    id: row.id,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    title: row.title,
+    url: row.url,
+    publishedAt: row.published_at,
+    snippet: row.snippet ?? "",
+    contentLimited: row.content_limited === 1,
+    summaryVi: row.summary_vi,
+    imageUrl: row.image_url ?? null
+  }));
+}
+
 export async function getArticleByUrl(db: D1Database, url: string): Promise<StoredArticle | null> {
   const row = await db
     .prepare(

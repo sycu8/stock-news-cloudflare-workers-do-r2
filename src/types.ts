@@ -19,8 +19,6 @@ export interface Env {
   OPENAI_MODEL_SUMMARY?: string;
   /** OpenAI model for `/api/news/explain` style reasoning (optional). */
   OPENAI_MODEL_EXPLAIN?: string;
-  /** OpenAI model for English investor translations (optional). */
-  OPENAI_MODEL_TRANSLATE?: string;
   /** AI Gateway slug (Workers `AI.run` gateway + OpenAI path segment when account id set). */
   AI_GATEWAY_ID?: string;
   /** Cloudflare account id (hex) for `gateway.ai.cloudflare.com/v1/{account}/{gateway}/...`. */
@@ -42,15 +40,8 @@ export interface Env {
    * (use with `OPENAI_MODEL_EXPLAIN` for a stronger model on explain only).
    */
   AI_EXPLAIN_OPENAI_FIRST?: string;
-  /**
-   * When `"true"`, article English translation tries Workers AI before OpenAI.
-   * Default (unset): OpenAI first when `OPENAI_API_KEY` is set (more reliable English output).
-   */
-  AI_TRANSLATE_WORKERS_FIRST?: string;
   /** Workers AI model for news impact explain (optional; else same as summary). */
   WORKERS_AI_MODEL_EXPLAIN?: string;
-  /** Workers AI model for English investor translations (optional). */
-  WORKERS_AI_MODEL_TRANSLATE?: string;
   /** Workers AI model for generated thumbnails (optional). */
   WORKERS_AI_MODEL_IMAGE?: string;
   ADMIN_REFRESH_TOKEN: string;

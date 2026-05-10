@@ -1,7 +1,7 @@
 import type { Env } from "../types";
 
 /** High-level text tasks — each can map to a different Workers AI / OpenAI model. */
-export type TextAiPurpose = "summary" | "explain" | "translate";
+export type TextAiPurpose = "summary" | "explain";
 
 const DEFAULT_WORKERS_SUMMARY = "@cf/meta/llama-3.1-8b-instruct-fast";
 const DEFAULT_WORKERS_IMAGE = "@cf/bytedance/stable-diffusion-xl-lightning";
@@ -23,13 +23,6 @@ export function workersAiTextModel(env: Env, purpose: TextAiPurpose): string {
       DEFAULT_WORKERS_SUMMARY
     );
   }
-  if (purpose === "translate") {
-    return (
-      env.WORKERS_AI_MODEL_TRANSLATE?.trim() ||
-      env.WORKERS_AI_MODEL_SUMMARY?.trim() ||
-      DEFAULT_WORKERS_SUMMARY
-    );
-  }
   return env.WORKERS_AI_MODEL_SUMMARY?.trim() || DEFAULT_WORKERS_SUMMARY;
 }
 
@@ -44,13 +37,11 @@ export function workersAiImageModel(env: Env): string {
 export function openAiChatModel(env: Env, purpose: TextAiPurpose): string {
   const base = env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   if (purpose === "explain") return env.OPENAI_MODEL_EXPLAIN?.trim() || base;
-  if (purpose === "translate") return env.OPENAI_MODEL_TRANSLATE?.trim() || base;
   return env.OPENAI_MODEL_SUMMARY?.trim() || base;
 }
 
 export function maxTokensForTextPurpose(purpose: TextAiPurpose): number {
   if (purpose === "explain") return 640;
-  if (purpose === "translate") return 900;
   return 420;
 }
 
@@ -67,9 +58,6 @@ function envFlagTrue(v: string | undefined): boolean {
  */
 export function textInferenceOrder(env: Env, purpose: TextAiPurpose): TextInferenceBackend[] {
   if (purpose === "explain" && envFlagTrue(env.AI_EXPLAIN_OPENAI_FIRST) && env.OPENAI_API_KEY?.trim()) {
-    return ["openai", "workers"];
-  }
-  if (purpose === "translate" && env.OPENAI_API_KEY?.trim() && !envFlagTrue(env.AI_TRANSLATE_WORKERS_FIRST)) {
     return ["openai", "workers"];
   }
   return ["workers", "openai"];

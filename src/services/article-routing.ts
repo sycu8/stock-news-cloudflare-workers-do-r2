@@ -1,4 +1,5 @@
 import type { StoredArticle } from "../types";
+import { formatCalendarDateVietnam } from "../utils/date.js";
 
 const FALLBACK_SLUG = "bai-viet";
 const MAX_SLUG_LENGTH = 96;
@@ -7,6 +8,12 @@ export function buildArticleDetailPath(reportDate: string, articleUrl: string, t
   const safeDate = /^\d{4}-\d{2}-\d{2}$/.test(reportDate) ? reportDate : "today";
   const slug = slugifyArticleTitle(title || hostnameFromUrl(articleUrl) || FALLBACK_SLUG);
   return `/tin/${encodeURIComponent(safeDate)}/${slug}-${hashArticleUrl(articleUrl)}`;
+}
+
+/** Trang chủ/RSS luôn dùng `/tin/ngày/...` theo lịch VN của `publishedAt` (đồng bộ Telegram). */
+export function buildArticleDetailHrefFromPublished(record: Pick<StoredArticle, "url" | "title" | "publishedAt">): string {
+  const day = formatCalendarDateVietnam(record.publishedAt);
+  return buildArticleDetailPath(day, record.url, record.title);
 }
 
 export function slugifyArticleTitle(input: string): string {
