@@ -255,8 +255,15 @@ app.on(["GET", "HEAD"], "/", async (c) => {
     return new Response(null, { status: 200, headers });
   }
 
-  // Stream HTML so RFC 8288 `Link` headers are sent immediately; slow DB work runs after
-  // the response is returned (avoids scanners aborting before headers on cold GET /).
+  const source = clampText(c.req.query("source"), 80);
+  const sentiment = (c.req.query("sentiment") ?? "").trim().toLowerCase();
+  const date = (c.req.query("date") ?? "").trim();
+  const q = clampText(c.req.query("q"), 120);
+  const page = clampInt(c.req.query("page"), 1, 1, 200);
+  const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
+  const appearance = readAppearance(c);
+  const isDefaultHome = reportDate === getTodayDateKey() && page === 1 && !source && !q && !sentiment;
+
   const outHeaders = new Headers({
     "cache-control": htmlCacheControl(),
     "content-language": "vi",
@@ -264,29 +271,20 @@ app.on(["GET", "HEAD"], "/", async (c) => {
   });
   appendHomepageAgentLinkHeaders(outHeaders);
 
+  if (isDefaultHome) {
+    const cachedHtml = await c.env.CACHE.get(homeHtmlCacheKey(reportDate, appearance));
+    if (cachedHtml) {
+      return new Response(cachedHtml, { status: 200, headers: outHeaders });
+    }
+  }
+
+  // Stream HTML so RFC 8288 `Link` headers are sent immediately; slow DB work runs after
+  // the response is returned (avoids scanners aborting before headers on cold GET /).
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       void (async () => {
         const encoder = new TextEncoder();
         try {
-          const source = clampText(c.req.query("source"), 80);
-          const sentiment = (c.req.query("sentiment") ?? "").trim().toLowerCase();
-          const date = (c.req.query("date") ?? "").trim();
-          const q = clampText(c.req.query("q"), 120);
-          const page = clampInt(c.req.query("page"), 1, 1, 200);
-          const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
-          const appearance = readAppearance(c);
-          const isDefaultHome =
-            reportDate === getTodayDateKey() && page === 1 && !source && !q && !sentiment;
-          if (isDefaultHome) {
-            const cachedHtml = await c.env.CACHE.get(homeHtmlCacheKey(reportDate, appearance));
-            if (cachedHtml) {
-              controller.enqueue(encoder.encode(cachedHtml));
-              controller.close();
-              return;
-            }
-          }
-
           const [feed, views] = await Promise.all([
             getFeedByDate(c.env, reportDate, {
               sourceFilter: source || undefined,
@@ -389,7 +387,7 @@ app.on(["GET", "HEAD"], "/", async (c) => {
             appearance
           });
           if (isDefaultHome) {
-            void c.env.CACHE.put(homeHtmlCacheKey(reportDate, appearance), html, { expirationTtl: 120 });
+            c.executionCtx.waitUntil(c.env.CACHE.put(homeHtmlCacheKey(reportDate, appearance), html, { expirationTtl: 120 }));
           }
           controller.enqueue(encoder.encode(html));
           controller.close();

@@ -45,6 +45,7 @@ import { buildDailyInvestorSnapshot, persistInvestorDailySnapshot } from "./inve
 const DAILY_CACHE_KEY = "today-report-cache";
 const LAST_GOOD_FEED_KEY = "today-report-last-good";
 const HOME_HTML_CACHE_PREFIX = "home-html:v2";
+const MARKET_BUNDLE_CACHE_KEY = "market-feed-bundle:v1";
 const REPORT_HISTORY_PREFIX = "report-history";
 const ENRICH_CONCURRENCY = 4;
 const SUMMARY_CONCURRENCY = 4;
@@ -92,7 +93,8 @@ export function homeHtmlCacheKey(reportDate: string, appearance: "light" | "dark
 export async function invalidateHomeHtmlCache(env: Env, reportDate: string): Promise<void> {
   await Promise.all([
     env.CACHE.delete(homeHtmlCacheKey(reportDate, "light")),
-    env.CACHE.delete(homeHtmlCacheKey(reportDate, "dark"))
+    env.CACHE.delete(homeHtmlCacheKey(reportDate, "dark")),
+    env.CACHE.delete(MARKET_BUNDLE_CACHE_KEY)
   ]);
 }
 
@@ -111,7 +113,7 @@ async function loadMarketSnapshotsForFeed(
 }> {
   const hasCachedHsx =
     cached?.hsxMarketSnapshot &&
-  (hsxMode === "light"
+    (hsxMode === "light"
       ? cached.hsxMarketSnapshot.topVolume.length > 0 || cached.hsxMarketSnapshot.vnindex1W.length > 0
       : cached.hsxMarketSnapshot.topVolume.length > 0 ||
         cached.hsxMarketSnapshot.vnindex1W.length > 0 ||
@@ -139,16 +141,52 @@ async function loadMarketSnapshotsForFeed(
     };
   }
 
+  const bundleCached = await env.CACHE.get(MARKET_BUNDLE_CACHE_KEY, "json");
+  if (bundleCached && typeof bundleCached === "object") {
+    const bundle = bundleCached as Pick<
+      DailyCachePayload,
+      "marketSnapshot" | "hsxMarketSnapshot" | "fxMarketSnapshot" | "goldMarketSnapshot"
+    >;
+    const bundleHasHsx =
+      bundle.hsxMarketSnapshot &&
+      (hsxMode === "light"
+        ? bundle.hsxMarketSnapshot.topVolume.length > 0 || bundle.hsxMarketSnapshot.vnindex1W.length > 0
+        : bundle.hsxMarketSnapshot.topVolume.length > 0 ||
+          bundle.hsxMarketSnapshot.vnindex1W.length > 0 ||
+          bundle.hsxMarketSnapshot.vnindex1M.length > 0 ||
+          bundle.hsxMarketSnapshot.vnindex1Y.length > 0);
+    if (bundle.marketSnapshot && bundleHasHsx && bundle.fxMarketSnapshot && bundle.goldMarketSnapshot) {
+      if (hsxMode === "light" && bundle.hsxMarketSnapshot) {
+        return {
+          marketSnapshot: bundle.marketSnapshot,
+          hsxMarketSnapshot: {
+            ...bundle.hsxMarketSnapshot,
+            vnindex1M: [],
+            vnindex1Y: []
+          },
+          fxMarketSnapshot: bundle.fxMarketSnapshot,
+          goldMarketSnapshot: bundle.goldMarketSnapshot
+        };
+      }
+      return {
+        marketSnapshot: bundle.marketSnapshot,
+        hsxMarketSnapshot: bundle.hsxMarketSnapshot ?? null,
+        fxMarketSnapshot: bundle.fxMarketSnapshot,
+        goldMarketSnapshot: bundle.goldMarketSnapshot
+      };
+    }
+  }
+
   const hsxRanges = hsxMode === "light" ? (["1w"] as const) : (["1w", "1m", "1y"] as const);
   const [marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot] = await Promise.all([
-    cached?.marketSnapshot ?? getCafeFMarketSnapshot(env),
-    hasCachedHsx
-      ? cached!.hsxMarketSnapshot!
-      : getHSXMarketSnapshot(env, { ranges: [...hsxRanges] }),
-    cached?.fxMarketSnapshot ?? getFxMarketSnapshot(env),
-    cached?.goldMarketSnapshot ?? getGoldMarketSnapshot(env)
+    getCafeFMarketSnapshot(env),
+    getHSXMarketSnapshot(env, { ranges: [...hsxRanges] }),
+    getFxMarketSnapshot(env),
+    getGoldMarketSnapshot(env)
   ]);
-  return { marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot };
+  const bundle = { marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot };
+  await env.CACHE.put(MARKET_BUNDLE_CACHE_KEY, JSON.stringify(bundle), { expirationTtl: 60 * 15 });
+  return bundle;
 }
 
 async function runLimitedArticleEnrichment(env: Env, reportDate: string): Promise<void> {
@@ -350,7 +388,6 @@ export async function getFeedByDate(
     hsxMode?: "full" | "light";
   }
 ): Promise<TodayFeedResponse> {
-  await ensureDefaultSources(env.DB);
   const pageSize = Math.min(50, Math.max(1, options?.pageSize ?? 50));
   const page = Math.max(1, options?.page ?? 1);
   const offset = (page - 1) * pageSize;
