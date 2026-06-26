@@ -59,7 +59,9 @@ export function renderStockPage(insight: StockInsight, appearance: Appearance = 
   ul{margin:8px 0;padding-left:18px}
   </style></head><body class="appBody"><main class="wrap">
   <div class="stockTop"><p style="margin:0"><a href="/">← Trang chủ</a></p>${sw}</div>
-  <section class="card"><h1>${escapeHtml(insight.symbol)}</h1><p class="muted">Trang phân tích mã cổ phiếu theo dữ liệu tin tức thời gian thực.</p></section>
+  <section class="card"><h1>${escapeHtml(insight.symbol)}</h1><p class="muted">Trang phân tích mã cổ phiếu theo dữ liệu tin tức thời gian thực. <strong>Không phải khuyến nghị đầu tư.</strong></p>
+  <p class="muted" style="font-size:.82rem;">Khối ngoại &amp; bất thường KL là <em>ước lượng heuristic</em> từ tin + HSX công khai — không phải dữ liệu room/foreign flow có bản quyền.</p>
+  <p><a class="chip" href="/portfolio?prefill=${encodeURIComponent(insight.symbol)}">+ Thêm vào danh mục theo dõi</a></p></section>
   <section class="card grid">
     <div><h3>Điểm cảm xúc</h3><div class="metric">${insight.sentiment.score}</div><p class="muted">${sentimentTotal} bài • +${insight.sentiment.positive} / =${insight.sentiment.neutral} / -${insight.sentiment.negative}</p></div>
     <div><h3>Khối ngoại mua/bán</h3><div class="metric">${escapeHtml(flowLabel)}</div><p class="muted">Lượt nhắc mua: ${insight.foreignFlow.buyMentions} • Lượt nhắc bán: ${insight.foreignFlow.sellMentions}</p></div>

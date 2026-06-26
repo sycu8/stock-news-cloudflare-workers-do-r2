@@ -2,7 +2,10 @@ import type { AgentProfile, BuiltinAgentRole } from "./types";
 import { systemPromptForRole } from "./prompts";
 
 const defaultTools = (names: string[]): AgentProfile["tools"] =>
-  names.map((name) => ({ name, description: `${name} (stub in V1)` }));
+  names.map((name) => ({
+    name,
+    description: name === "summarize_progress" ? "Summarize task progress for CEO dashboard" : `${name} (orchestration helper)`
+  }));
 
 export function foundingAgentProfiles(industryHint: string): Record<BuiltinAgentRole, AgentProfile> {
   return {

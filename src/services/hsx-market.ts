@@ -5,12 +5,23 @@ const TOP_CACHE_KEY = "hsx:top-volume";
 const CHART_CACHE_KEY_PREFIX = "hsx:vnindex";
 const STOCK_CHART_CACHE_KEY_PREFIX = "hsx:stock-chart";
 
-export async function getHSXMarketSnapshot(env: Env): Promise<HSXMarketSnapshot | null> {
+export type HSXSnapshotRange = "1w" | "1m" | "1y";
+
+export async function getVNIndexChartPoints(env: Env, range: HSXSnapshotRange): Promise<HSXVNIndexPoint[]> {
+  return getVNIndexRange(env, range);
+}
+
+export async function getHSXMarketSnapshot(
+  env: Env,
+  options?: { ranges?: HSXSnapshotRange[] }
+): Promise<HSXMarketSnapshot | null> {
+  const ranges = options?.ranges ?? (["1w", "1m", "1y"] as HSXSnapshotRange[]);
+  const want = new Set(ranges);
   const [topVolume, vnindex1W, vnindex1M, vnindex1Y] = await Promise.all([
     getTopVolume(env),
-    getVNIndexRange(env, "1w"),
-    getVNIndexRange(env, "1m"),
-    getVNIndexRange(env, "1y")
+    want.has("1w") ? getVNIndexRange(env, "1w") : Promise.resolve([]),
+    want.has("1m") ? getVNIndexRange(env, "1m") : Promise.resolve([]),
+    want.has("1y") ? getVNIndexRange(env, "1y") : Promise.resolve([])
   ]);
   if (!topVolume.length && !vnindex1W.length && !vnindex1M.length && !vnindex1Y.length) return null;
   return {
