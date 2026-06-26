@@ -16,6 +16,12 @@ export interface FearGreedResult {
   value: number;
   labelVi: string;
   detailVi: string;
+  inputs?: {
+    sentimentTilt: number;
+    articleCount: number;
+    vn1wChangePct: number | null;
+    methodology: string;
+  };
 }
 
 export interface InvestorDailySnapshot {
@@ -76,7 +82,17 @@ export function computeFearGreedVn(sentiment: SentimentSnapshot, articleCount: n
   else if (v <= 58) labelVi = "Trung lập";
   else if (v <= 76) labelVi = "Tự tin";
   else labelVi = "Tham lam mạnh";
-  return { value: v, labelVi, detailVi };
+  return {
+    value: v,
+    labelVi,
+    detailVi,
+    inputs: {
+      sentimentTilt: tilt,
+      articleCount: n,
+      vn1wChangePct,
+      methodology: "v2-heuristic-sentiment-vnindex1w"
+    }
+  };
 }
 
 export function computeSectorRotation(articles: StoredArticle[]): SectorBucket[] {
@@ -176,32 +192,4 @@ export async function listIntelArchiveDates(env: Env): Promise<string[]> {
   return Array.isArray(raw) ? (raw as string[]) : [];
 }
 
-export function filterArticlesForPortfolio(articles: StoredArticle[], symbols: string[]): StoredArticle[] {
-  if (!symbols.length) return articles;
-  const set = new Set(symbols.map((s) => s.toUpperCase().replace(/[^A-Z0-9]/g, "")).filter(Boolean));
-  return articles.filter((a) => {
-    const t = `${a.title} ${a.summaryVi ?? ""} ${a.snippet}`;
-    for (const sym of set) {
-      if (sym.length >= 2 && new RegExp(`\\b${sym}\\b`, "i").test(t)) return true;
-    }
-    return false;
-  });
-}
-
-export function parsePortfolioSymbols(raw: string | undefined | null, max = 18): string[] {
-  if (!raw) return [];
-  const parts = raw
-    .split(/[\s,;]+/)
-    .map((s) => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""))
-    .filter(Boolean);
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const p of parts) {
-    if (p.length > 8 || p.length < 2) continue;
-    if (seen.has(p)) continue;
-    seen.add(p);
-    out.push(p);
-    if (out.length >= max) break;
-  }
-  return out;
-}
+export { filterArticlesForPortfolio, parsePortfolioSymbols } from "./portfolio-watchlist";

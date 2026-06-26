@@ -44,7 +44,7 @@ export function renderNotifyPage(params: {
     <div class="card">
       <h1>🔔 Nhận thông báo (Telegram)</h1>
       <p>
-        Kết nối bot Telegram để nhận ping khi có tin tức / cập nhật quan trọng (broadcast từ admin).
+        Kết nối bot Telegram để nhận ping khi có tin mới — có thể lọc theo mã, điểm nổi bật và tin đa nguồn.
         Không thay thế tư vấn đầu tư.
       </p>
       ${
@@ -54,13 +54,42 @@ export function renderNotifyPage(params: {
           : `<p class="meta">Bot Telegram chưa được cấu hình trên server. Admin cần thêm biến <code>TELEGRAM_BOT_USERNAME</code> và secret <code>TELEGRAM_BOT_TOKEN</code>.</p>`
       }
 
-      <h2 style="margin:20px 0 8px;font-size:1.05rem;">Hướng dẫn cho người dùng</h2>
+      <h2 style="margin:20px 0 8px;font-size:1.05rem;">Web Push (trình duyệt)</h2>
+      <p class="meta">Đăng ký thông báo đẩy khi VAPID đã cấu hình trên server. Cần HTTPS và cho phép thông báo.</p>
+      <button type="button" class="btn" id="pushEnableBtn" style="border:0;cursor:pointer;">Bật Web Push</button>
+      <p class="meta" id="pushStatus"></p>
+      <script>
+      (async function(){
+        const btn = document.getElementById("pushEnableBtn");
+        const st = document.getElementById("pushStatus");
+        if (!btn || !st || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+          if (st) st.textContent = "Trình duyệt không hỗ trợ Web Push.";
+          if (btn) btn.disabled = true;
+          return;
+        }
+        btn.addEventListener("click", async () => {
+          try {
+            const v = await fetch("/api/push/vapid").then(r => r.json());
+            if (!v.configured || !v.publicKey) { st.textContent = "Server chưa cấu hình VAPID."; return; }
+            const reg = await navigator.serviceWorker.register("/sw.js");
+            const perm = await Notification.requestPermission();
+            if (perm !== "granted") { st.textContent = "Đã từ chối quyền thông báo."; return; }
+            const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: v.publicKey });
+            await fetch("/api/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub.toJSON() }) });
+            st.textContent = "✅ Đã đăng ký Web Push.";
+          } catch (e) { st.textContent = "Lỗi: " + (e && e.message ? e.message : String(e)); }
+        });
+      })();
+      </script>
+
+      <h2 style="margin:20px 0 8px;font-size:1.05rem;">Hướng dẫn Telegram</h2>
       <ol>
         <li>Bấm nút <strong>Mở Telegram và bật thông báo</strong> ở trên.</li>
         <li>Trong Telegram, chọn <strong>Start</strong> để đăng ký nhận bản tin.</li>
         <li>Đảm bảo bạn không tắt hoặc chặn bot để tiếp tục nhận thông báo tự động.</li>
-        <li>Khi hệ thống có bài mới quan trọng, bot sẽ gửi bản tin gộp vào Telegram của bạn.</li>
-        <li>Nếu chưa nhận được thông báo, hãy mở lại bot và gửi <code>/start</code> một lần nữa.</li>
+        <li>Khi hệ thống có bài mới, bot gửi tin phù hợp <strong>cài đặt cá nhân</strong> của bạn.</li>
+        <li>Cá nhân hoá trong Telegram: <code>/symbols VNM,FPT</code>, <code>/impact 40</code>, <code>/breaking on</code>, <code>/settings</code>.</li>
+        <li>Gửi <code>/all</code> để nhận mọi tin (bỏ lọc mã). Gửi <code>/stop</code> để huỷ.</li>
       </ol>
       <p class="meta">Mẹo: bạn có thể ghim bot lên đầu danh sách chat để không bỏ lỡ tín hiệu mới.</p>
     </div>

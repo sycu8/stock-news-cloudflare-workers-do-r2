@@ -49,6 +49,10 @@ function toConfirmationLabel(sourceCount: number, level: ConfirmationLevel): str
   return "Breaking / unconfirmed";
 }
 
+export function buildClusterKeyForArticle(title: string, publishedAt: string): string {
+  return clusterKey(title, publishedAt);
+}
+
 function clusterKey(title: string, publishedAt: string): string {
   const dateHour = publishedAt.slice(0, 13);
   const normalized = normalizeTitle(title)

@@ -16,11 +16,13 @@ import {
   listRecentManualArticles,
   listRecentCrawlRuns,
   listSources,
+  listClustersForReportDate,
   toggleSource,
   updateManualArticle
 } from "./db";
 import { NEWS_SOURCES } from "./config/sources";
 import { getFeedByDate, getTodayFeed, refreshDailyNews } from "./services/refresh";
+import { explainNewsImpact } from "./services/summarizer";
 import type { Env, NewsSourceRecord, NewsSourceType } from "./types";
 import { formatVietnamDateDisplay } from "./utils/date";
 import { renderArticleDetailPage, renderHomePage, renderVNIndexChart } from "./ui/render";
@@ -116,6 +118,27 @@ import {
 } from "./ui/investor-desk";
 import { searchArticlesWithCloudflareAi } from "./services/ai-search";
 import { crawlWebsiteIntoContainer, getWebsiteContainerDocs } from "./services/site-crawl-container";
+import { collapseDuplicateNews } from "./services/news-cluster";
+import { generateMorningBriefIfNeeded, loadMorningBrief, buildPersonalizedBriefNote } from "./services/morning-brief";
+import {
+  WATCH_ID_COOKIE,
+  WATCH_ID_COOKIE_MAX_AGE,
+  loadWatchlist,
+  newWatchId,
+  parseWatchId,
+  parseWatchlistCsv,
+  saveWatchlist,
+  watchlistToCsv
+} from "./services/watchlist";
+import { listRumAggregates, parseRumPayload, recordRumSample, rumAverage } from "./services/rum-metrics";
+import { handleMcpJsonRpc } from "./services/mcp-handler";
+import { issueClientCredentialsToken, isOAuthClientConfigured } from "./services/oauth-token";
+import {
+  addPushSubscription,
+  getPushSubscriberCount,
+  isWebPushConfigured,
+  removePushSubscription
+} from "./services/web-push";
 const app = new Hono<{ Bindings: Env }>();
 const ADMIN_COOKIE_NAME = "admin_token";
 const ADMIN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
@@ -188,7 +211,7 @@ function getAdminToken(c: { env: Env; req: { header(name: string): string | unde
   if (fromCookie) return fromCookie;
   const fromHeader = c.req.header("x-admin-token");
   if (fromHeader) return fromHeader;
-  return c.env.ALLOW_ADMIN_QUERY_TOKEN === "true" ? c.req.query("token") ?? null : null;
+  return null;
 }
 
 function isAdminAuthorized(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): boolean {
@@ -478,6 +501,45 @@ function portfolioSymbolsFromCookie(c: Context<{ Bindings: Env }>): string[] {
   }
 }
 
+function ensureWatchIdOnResponse(c: Context<{ Bindings: Env }>): string {
+  const existing = parseWatchId(getCookieValue(c, WATCH_ID_COOKIE));
+  if (existing) return existing;
+  const id = newWatchId();
+  c.header(
+    "Set-Cookie",
+    `${WATCH_ID_COOKIE}=${id}; Path=/; Max-Age=${WATCH_ID_COOKIE_MAX_AGE}; SameSite=Lax`,
+    { append: true }
+  );
+  return id;
+}
+
+async function resolvePortfolioSymbols(
+  c: Context<{ Bindings: Env }>
+): Promise<{ symbols: string[]; watchId: string | null; cloudSynced: boolean }> {
+  const cookieSymbols = portfolioSymbolsFromCookie(c);
+  const watchId = parseWatchId(getCookieValue(c, WATCH_ID_COOKIE));
+  if (!watchId) {
+    return { symbols: cookieSymbols, watchId: null, cloudSynced: false };
+  }
+  const cloud = await loadWatchlist(c.env, watchId);
+  if (cloud?.symbols.length) {
+    return { symbols: cloud.symbols, watchId, cloudSynced: true };
+  }
+  return { symbols: cookieSymbols, watchId, cloudSynced: false };
+}
+
+function setPortfolioCookies(c: Context<{ Bindings: Env }>, symbols: string[]): void {
+  const val = encodeURIComponent(symbols.join(","));
+  c.header("Set-Cookie", `${PORTFOLIO_COOKIE}=${val}; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`);
+  if (symbols.length > 0) {
+    c.header(
+      "Set-Cookie",
+      `${PORTFOLIO_ONBOARDING_COOKIE}=1; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`,
+      { append: true }
+    );
+  }
+}
+
 async function buildDeskSnapshotForDate(env: Env, reportDate: string) {
   const feed = await getFeedByDate(env, reportDate, { page: 1, pageSize: 200 });
   const sentiment = analyzeSentimentForArticles(feed.articles);
@@ -513,10 +575,23 @@ app.get("/briefing", async (c) => {
   try {
     const reportDate = deskReportDate(c);
     const { feed, snap } = await buildDeskSnapshotForDate(c.env, reportDate);
-    return c.html(renderMorningBriefing({ reportDate, report: feed.report, snap, appearance: readAppearance(c) }), 200, {
-      "cache-control": htmlCacheControl(),
-      "content-language": "vi"
-    });
+    let morningBrief = await loadMorningBrief(c.env, reportDate);
+    if (!morningBrief) {
+      morningBrief = await generateMorningBriefIfNeeded(c.env, reportDate, feed.report, feed.articles);
+    }
+    const { symbols } = await resolvePortfolioSymbols(c);
+    const personalizedNoteVi = buildPersonalizedBriefNote(feed.articles, symbols);
+    if (morningBrief && personalizedNoteVi) {
+      morningBrief = { ...morningBrief, personalizedNoteVi };
+    }
+    return c.html(
+      renderMorningBriefing({ reportDate, report: feed.report, snap, morningBrief, appearance: readAppearance(c) }),
+      200,
+      {
+        "cache-control": htmlCacheControl(),
+        "content-language": "vi"
+      }
+    );
   } catch (error) {
     console.error("GET /briefing failed:", error);
     return c.text("Internal Server Error", 500);
@@ -550,7 +625,7 @@ app.get("/portfolio", async (c) => {
       return c.redirect(dest, 302);
     }
     const reportDate = deskReportDate(c);
-    const symbols = portfolioSymbolsFromCookie(c);
+    const { symbols, watchId, cloudSynced } = await resolvePortfolioSymbols(c);
     const feed = await getFeedByDate(c.env, reportDate, { page: 1, pageSize: 200 });
     const filtered = symbols.length ? filterArticlesForPortfolio(feed.articles, symbols) : feed.articles;
     const flash = c.req.query("saved") === "1" ? "Đã lưu danh sách theo dõi." : undefined;
@@ -568,7 +643,9 @@ app.get("/portfolio", async (c) => {
         flash,
         appearance: readAppearance(c),
         showOnboarding,
-        formInputValue
+        formInputValue,
+        watchId,
+        cloudSynced
       }),
       200,
       { "cache-control": htmlCacheControl(), "content-language": "vi" }
@@ -584,18 +661,9 @@ app.post("/portfolio", async (c) => {
     const fd = await c.req.formData();
     const raw = String(fd.get("symbols") ?? "");
     const symbols = parsePortfolioSymbols(raw);
-    const val = encodeURIComponent(symbols.join(","));
-    c.header(
-      "Set-Cookie",
-      `${PORTFOLIO_COOKIE}=${val}; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`
-    );
-    if (symbols.length > 0) {
-      c.header(
-        "Set-Cookie",
-        `${PORTFOLIO_ONBOARDING_COOKIE}=1; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`,
-        { append: true }
-      );
-    }
+    setPortfolioCookies(c, symbols);
+    const watchId = ensureWatchIdOnResponse(c);
+    await saveWatchlist(c.env, watchId, { symbols });
     return c.redirect("/portfolio?saved=1", 302);
   } catch (error) {
     console.error("POST /portfolio failed:", error);
@@ -603,17 +671,139 @@ app.post("/portfolio", async (c) => {
   }
 });
 
+app.post("/portfolio/import", async (c) => {
+  try {
+    const fd = await c.req.formData();
+    const file = fd.get("file");
+    let text = "";
+    if (file && typeof file === "object" && "text" in file && typeof (file as File).text === "function") {
+      text = await (file as File).text();
+    } else {
+      text = String(fd.get("symbols") ?? "");
+    }
+    const symbols = parseWatchlistCsv(text);
+    if (!symbols.length) {
+      return c.text("CSV không có mã hợp lệ", 400);
+    }
+    setPortfolioCookies(c, symbols);
+    const watchId = ensureWatchIdOnResponse(c);
+    await saveWatchlist(c.env, watchId, { symbols });
+    return c.redirect("/portfolio?saved=1", 302);
+  } catch (error) {
+    console.error("POST /portfolio/import failed:", error);
+    return c.text("Bad Request", 400);
+  }
+});
+
+app.get("/api/watchlist", async (c) => {
+  const watchId = parseWatchId(getCookieValue(c, WATCH_ID_COOKIE));
+  const cookieSymbols = portfolioSymbolsFromCookie(c);
+  if (!watchId) {
+    return c.json({ watchId: null, symbols: cookieSymbols, source: "cookie" }, 200, {
+      "cache-control": "private, no-store"
+    });
+  }
+  const cloud = await loadWatchlist(c.env, watchId);
+  const symbols = cloud?.symbols.length ? cloud.symbols : cookieSymbols;
+  return c.json(
+    {
+      watchId,
+      symbols,
+      name: cloud?.name ?? null,
+      updatedAt: cloud?.updatedAt ?? null,
+      source: cloud?.symbols.length ? "kv" : "cookie"
+    },
+    200,
+    { "cache-control": "private, no-store" }
+  );
+});
+
+app.post("/api/watchlist", async (c) => {
+  try {
+    const body = (await c.req.json()) as { symbols?: unknown; name?: string };
+    const symbols = parsePortfolioSymbols(Array.isArray(body.symbols) ? body.symbols.join(",") : String(body.symbols ?? ""));
+    const watchId = ensureWatchIdOnResponse(c);
+    const record = await saveWatchlist(c.env, watchId, { symbols, name: body.name });
+    setPortfolioCookies(c, symbols);
+    return c.json({ ok: true, watchId, ...record }, 200, { "cache-control": "private, no-store" });
+  } catch (error) {
+    console.error("POST /api/watchlist failed:", error);
+    return c.json({ error: "invalid_body" }, 400);
+  }
+});
+
+app.get("/api/watchlist/export", async (c) => {
+  const q = (c.req.query("symbols") ?? "").trim();
+  const symbols = q ? parsePortfolioSymbols(q) : portfolioSymbolsFromCookie(c);
+  const csv = watchlistToCsv(symbols);
+  return new Response(csv, {
+    status: 200,
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": 'attachment; filename="watchlist.csv"',
+      "cache-control": "private, no-store"
+    }
+  });
+});
+
 app.get("/intel", async (c) => {
   try {
-    const dates = await listIntelArchiveDates(c.env);
-    return c.html(renderIntelArchive({ dates, appearance: readAppearance(c) }), 200, {
-      "cache-control": htmlCacheControl(),
-      "content-language": "vi"
-    });
+    const reportDate = getTodayDateKey();
+    const [dates, dbClusters, feed] = await Promise.all([
+      listIntelArchiveDates(c.env),
+      listClustersForReportDate(c.env.DB, reportDate, 2, 24),
+      getFeedByDate(c.env, reportDate, { page: 1, pageSize: 200 })
+    ]);
+    const clusters =
+      dbClusters.length > 0
+        ? dbClusters.map((row) => ({
+            id: row.id,
+            title: row.canonicalTitle,
+            url: row.leadUrl ?? "#",
+            sourceName: `${row.sourceCount} nguồn`,
+            publishedAt: row.lastSeenAt,
+            summaryVi: "",
+            sourceCount: row.sourceCount,
+            sourceNames: [] as string[],
+            confirmationLevel: (row.confidenceLabel === "confirmed"
+              ? "confirmed"
+              : row.confidenceLabel === "single"
+                ? "single"
+                : "breaking") as "confirmed" | "single" | "breaking",
+            confirmationLabel:
+              row.sourceCount >= 3
+                ? `Confirmed by ${row.sourceCount} sources`
+                : row.sourceCount <= 1
+                  ? "Single source only"
+                  : "Breaking / unconfirmed",
+            sourceId: "",
+            snippet: "",
+            contentLimited: false,
+            imageUrl: null
+          }))
+        : collapseDuplicateNews(feed.articles);
+    return c.html(
+      renderIntelArchive({ dates, clusters, reportDate, appearance: readAppearance(c) }),
+      200,
+      {
+        "cache-control": htmlCacheControl(),
+        "content-language": "vi"
+      }
+    );
   } catch (error) {
     console.error("GET /intel failed:", error);
     return c.text("Internal Server Error", 500);
   }
+});
+
+app.get("/api/clusters", async (c) => {
+  const date = (c.req.query("date") ?? getTodayDateKey()).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ error: "invalid_date" }, 400);
+  }
+  const min = Math.max(1, Number(c.req.query("minSources") ?? 2) || 2);
+  const rows = await listClustersForReportDate(c.env.DB, date, min, 60);
+  return c.json({ reportDate: date, clusters: rows }, 200, { "cache-control": "public, s-maxage=120" });
 });
 
 app.get("/api/intel/daily", async (c) => {
@@ -986,17 +1176,93 @@ app.get("/rss/today", async (c) => {
 app.post("/api/rum", async (c) => {
   try {
     const payload = await c.req.json();
-    const routeTemplate = clampText(payload?.routeTemplate, 32) ?? "unknown";
-    const metric = clampText(payload?.metric, 16) ?? "unknown";
-    const value = Number(payload?.value ?? 0);
-    const deviceClass = clampText(payload?.deviceClass, 16) ?? "unknown";
-    const path = clampText(payload?.path, 200) ?? "";
-    const cacheStatus = clampText(payload?.cacheStatus, 16) ?? "unknown";
-    console.log("rum_metric", JSON.stringify({ routeTemplate, metric, value, deviceClass, path, cacheStatus, at: new Date().toISOString() }));
+    const sample = parseRumPayload(payload);
+    if (!sample) {
+      const routeTemplate = clampText(payload?.routeTemplate, 32) ?? "unknown";
+      const metric = clampText(payload?.metric, 16) ?? "unknown";
+      const value = Number(payload?.value ?? 0);
+      if (metric !== "unknown" && Number.isFinite(value)) {
+        await recordRumSample(c.env, {
+          metric,
+          path: clampText(payload?.path, 200) ?? routeTemplate,
+          value,
+          at: new Date().toISOString()
+        });
+      }
+      return c.json({ ok: true }, 202);
+    }
+    await recordRumSample(c.env, sample);
+    console.log("rum_metric", JSON.stringify({ ...sample, at: sample.at ?? new Date().toISOString() }));
     return c.json({ ok: true }, 202);
   } catch {
     return c.json({ error: "invalid rum payload" }, 400);
   }
+});
+
+app.get("/api/rum/summary", async (c) => {
+  const rows = await listRumAggregates(c.env, 32);
+  return c.json(
+    {
+      aggregates: rows.map((r) => ({ ...r, avg: rumAverage(r) }))
+    },
+    200,
+    { "cache-control": "public, s-maxage=60" }
+  );
+});
+
+app.get("/api/push/vapid", (c) => {
+  const key = c.env.VAPID_PUBLIC_KEY?.trim() ?? null;
+  return c.json({ configured: Boolean(key), publicKey: key }, 200, { "cache-control": "public, s-maxage=3600" });
+});
+
+app.post("/api/push/subscribe", async (c) => {
+  try {
+    const body = (await c.req.json()) as {
+      subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+    };
+    const endpoint = body.subscription?.endpoint?.trim();
+    const p256dh = body.subscription?.keys?.p256dh?.trim();
+    const auth = body.subscription?.keys?.auth?.trim();
+    if (!endpoint || !p256dh || !auth) return c.json({ error: "invalid_subscription" }, 400);
+    await addPushSubscription(c.env, {
+      endpoint,
+      keys: { p256dh, auth },
+      subscribedAt: new Date().toISOString()
+    });
+    return c.json({ ok: true }, 200, { "cache-control": "no-store" });
+  } catch (e) {
+    console.error("push subscribe:", e);
+    return c.json({ error: "subscribe_failed" }, 400);
+  }
+});
+
+app.post("/api/push/unsubscribe", async (c) => {
+  try {
+    const body = (await c.req.json()) as { endpoint?: string };
+    const endpoint = body.endpoint?.trim();
+    if (!endpoint) return c.json({ error: "endpoint_required" }, 400);
+    await removePushSubscription(c.env, endpoint);
+    return c.json({ ok: true }, 200, { "cache-control": "no-store" });
+  } catch {
+    return c.json({ error: "unsubscribe_failed" }, 400);
+  }
+});
+
+app.get("/sw.js", () => {
+  const body = `self.addEventListener("push", (e) => {
+  let data = { title: "Stock News", body: "Tin mới", url: "/" };
+  try { data = { ...data, ...JSON.parse(e.data?.text() || "{}") }; } catch {}
+  e.waitUntil(self.registration.showNotification(data.title, { body: data.body, data: { url: data.url } }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || "/";
+  e.waitUntil(clients.openWindow(url));
+});`;
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "public, max-age=3600" }
+  });
 });
 
 app.post("/api/sem/event", async (c) => {
@@ -1184,19 +1450,46 @@ const mcpTransportCorsHeaders: Record<string, string> = {
   "access-control-max-age": "86400"
 };
 
-app.all("/mcp", (c) => {
+app.all("/mcp", async (c) => {
   if (c.req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: mcpTransportCorsHeaders });
   }
-  return c.json(
-    {
-      error: "mcp_not_enabled",
-      message:
-        "Streamable MCP is not implemented on this worker. Use HTTP JSON APIs: /openapi.json and /.well-known/api-catalog (see /.well-known/mcp/server-card.json)."
-    },
-    501,
-    { ...mcpTransportCorsHeaders, "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
-  );
+  if (c.req.method === "GET") {
+    return c.json(
+      {
+        name: "vn-market-daily-worker",
+        transport: "json-rpc-http",
+        endpoint: "/mcp",
+        methods: ["POST JSON-RPC 2.0: initialize, tools/list, tools/call, ping"]
+      },
+      200,
+      { ...mcpTransportCorsHeaders, "content-type": "application/json; charset=utf-8" }
+    );
+  }
+  if (c.req.method !== "POST") {
+    return c.json({ error: "method_not_allowed" }, 405, mcpTransportCorsHeaders);
+  }
+  try {
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const origin = new URL(c.req.url).origin;
+    const response = await handleMcpJsonRpc(c.env, origin, body, {
+      newsToday: async (date, q) => {
+        const reportDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
+        return getFeedByDate(c.env, reportDate, { page: 1, pageSize: 30, q });
+      },
+      stockInsight: async (symbol) => buildStockInsight(c.env, symbol, getTodayDateKey()),
+      explainArticle: async (url) => {
+        const article = await getArticleByUrl(c.env.DB, url);
+        if (!article) return { error: "not_found" };
+        return explainNewsImpact(article, c.env);
+      },
+      listClusters: async (date) => listClustersForReportDate(c.env.DB, date, 2, 40)
+    });
+    return c.json(response, 200, { ...mcpTransportCorsHeaders, "content-type": "application/json; charset=utf-8" });
+  } catch (e) {
+    console.error("POST /mcp failed:", e);
+    return c.json({ jsonrpc: "2.0", id: null, error: { code: -32603, message: "Internal error" } }, 500, mcpTransportCorsHeaders);
+  }
 });
 
 /** Stubs: metadata describes endpoints; this worker does not run a browser OAuth server (public APIs are anonymous; admin uses operator token). */
@@ -1212,17 +1505,55 @@ app.get("/oauth/authorize", (c) =>
   )
 );
 
-app.post("/oauth/token", (c) =>
-  c.json(
+app.post("/oauth/token", async (c) => {
+  let grantType = "";
+  let clientId = "";
+  let clientSecret = "";
+  const contentType = c.req.header("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = (await c.req.json()) as Record<string, string>;
+    grantType = body.grant_type ?? "";
+    clientId = body.client_id ?? "";
+    clientSecret = body.client_secret ?? "";
+  } else {
+    const fd = await c.req.parseBody();
+    grantType = String(fd.grant_type ?? "");
+    clientId = String(fd.client_id ?? "");
+    clientSecret = String(fd.client_secret ?? "");
+  }
+  const auth = c.req.header("authorization");
+  if (auth?.startsWith("Basic ")) {
+    try {
+      const decoded = atob(auth.slice(6));
+      const [id, secret] = decoded.split(":", 2);
+      clientId = clientId || id || "";
+      clientSecret = clientSecret || secret || "";
+    } catch {
+      /* ignore */
+    }
+  }
+  if (grantType === "client_credentials" && isOAuthClientConfigured(c.env)) {
+    const token = await issueClientCredentialsToken(c.env, clientId, clientSecret);
+    if (token) {
+      return c.json({ access_token: token, token_type: "Bearer", expires_in: 3600 }, 200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store"
+      });
+    }
+    return c.json({ error: "invalid_client" }, 401, { "cache-control": "no-store" });
+  }
+  return c.json(
     {
       error: "unsupported_grant_type",
       error_description:
-        "Token issuance is not enabled. Use public endpoints without OAuth, or X-Admin-Token / admin session for /admin/* (see /docs/api)."
+        isOAuthClientConfigured(c.env)
+          ? "Supported: client_credentials with OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET."
+          : "Token issuance is not enabled. Set OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET, or use public endpoints without OAuth."
     },
     400,
     { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
-  )
-);
+  );
+});
 
 app.get("/sitemap.xml", async (c) => {
   try {
@@ -1327,7 +1658,9 @@ app.get("/api/notify/status", async (c) => {
       {
         telegramConfigured: configured,
         subscriberCount,
-        webhookPath: "/webhooks/telegram"
+        webhookPath: "/webhooks/telegram",
+        webPushConfigured: isWebPushConfigured(c.env),
+        webPushSubscriberCount: await getPushSubscriberCount(c.env)
       },
       200,
       { "cache-control": "public, s-maxage=60" }
@@ -1389,6 +1722,7 @@ app.get("/status", async (c) => {
         .filter((x): x is string => Boolean(x))
         .sort((a, b) => b.localeCompare(a))[0] ?? null;
     const avgUpdateMinutes = snapshot ? 5 : null;
+    const rumAggregates = await listRumAggregates(c.env, 12);
     return c.html(
       renderStatusPage({
         nowIso: new Date().toISOString(),
@@ -1397,6 +1731,9 @@ app.get("/status", async (c) => {
         avgUpdateMinutes,
         aiStatus: snapshot?.aiOk ? "ok" : "degraded",
         feedHealth,
+        rumAggregates: rumAggregates.map((r) => ({ ...r, avg: rumAverage(r) })),
+        pushConfigured: isWebPushConfigured(c.env),
+        pushSubscriberCount: await getPushSubscriberCount(c.env),
         appearance: readAppearance(c)
       }),
       200,
