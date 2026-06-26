@@ -16,6 +16,12 @@ export interface FearGreedResult {
   value: number;
   labelVi: string;
   detailVi: string;
+  inputs?: {
+    sentimentTilt: number;
+    articleCount: number;
+    vn1wChangePct: number | null;
+    methodology: string;
+  };
 }
 
 export interface InvestorDailySnapshot {
@@ -76,7 +82,17 @@ export function computeFearGreedVn(sentiment: SentimentSnapshot, articleCount: n
   else if (v <= 58) labelVi = "Trung lập";
   else if (v <= 76) labelVi = "Tự tin";
   else labelVi = "Tham lam mạnh";
-  return { value: v, labelVi, detailVi };
+  return {
+    value: v,
+    labelVi,
+    detailVi,
+    inputs: {
+      sentimentTilt: tilt,
+      articleCount: n,
+      vn1wChangePct,
+      methodology: "v2-heuristic-sentiment-vnindex1w"
+    }
+  };
 }
 
 export function computeSectorRotation(articles: StoredArticle[]): SectorBucket[] {

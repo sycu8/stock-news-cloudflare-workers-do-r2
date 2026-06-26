@@ -45,10 +45,14 @@ export interface Env {
   /** Workers AI model for generated thumbnails (optional). */
   WORKERS_AI_MODEL_IMAGE?: string;
   ADMIN_REFRESH_TOKEN: string;
-  /** Temporary compatibility escape hatch. Prefer cookie login or x-admin-token header. */
-  ALLOW_ADMIN_QUERY_TOKEN?: string;
   TZ?: string;
   WORKER_VERSION?: string;
+  /** Machine client OAuth (client_credentials) — optional */
+  OAUTH_CLIENT_ID?: string;
+  OAUTH_CLIENT_SECRET?: string;
+  /** Web Push VAPID keys (base64url) — optional */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
   /** Telegram Bot API token (@BotFather); use `wrangler secret put TELEGRAM_BOT_TOKEN` */
   TELEGRAM_BOT_TOKEN?: string;
   /** Bot username without @; public, for https://t.me/<name> links */

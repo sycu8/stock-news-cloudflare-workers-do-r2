@@ -2,7 +2,7 @@
 
 Vision: **stocknews.orangecloud.vn** as a mobile-first Vietnam market news terminal — curated feeds, investor desk, personalized watchlists, and alerts. Informational only; not investment advice.
 
-A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI company simulator); it is not deployed with the main Worker.
+A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI company simulator); deploy separately from the main Worker.
 
 ## Status legend
 
@@ -24,8 +24,8 @@ A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI 
 | TypeScript check in CI | Shipped | `npm run check` |
 | Unit tests in CI | Shipped | `npm run test:article` |
 | Lighthouse + Pa11y smoke | Shipped | `.github/workflows/perf-a11y-ci.yml` |
-| OpenAPI catalog expansion | Planned | Document desk, portfolio, live poll routes |
-| Remove `ALLOW_ADMIN_QUERY_TOKEN` escape hatch | Planned | After cookie auth verified |
+| OpenAPI catalog expansion | Shipped | Desk, watchlist, live poll, clusters, push, RUM |
+| Remove `ALLOW_ADMIN_QUERY_TOKEN` escape hatch | Shipped | Query-string admin token removed |
 
 ### Phase 1 — Terminal MVP
 
@@ -33,11 +33,11 @@ A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI 
 |---------|--------|-------|
 | Investor Desk (`/desk`, `/briefing`, `/markets`, `/portfolio`, `/intel`) | Shipped | [`src/ui/investor-desk.ts`](src/ui/investor-desk.ts) |
 | Cookie watchlist (`vnwatch`) | Shipped | Up to 18 symbols |
-| KV-backed watchlist (`sn_watch_id`) | Shipped | [`src/services/watchlist.ts`](src/services/watchlist.ts), `GET/POST /api/watchlist` |
+| KV-backed watchlist (`sn_watch_id`) | Shipped | [`src/services/watchlist.ts`](src/services/watchlist.ts) |
 | CSV export/import on portfolio | Shipped | `/api/watchlist/export`, `POST /portfolio/import` |
-| Personalized Telegram alerts | Shipped | `/symbols`, `/impact`, `/breaking`, `/settings` |
-| AI morning brief (cached) | Shipped | [`src/services/morning-brief.ts`](src/services/morning-brief.ts), `/briefing` |
-| Multi-source news clusters on `/intel` | Shipped | [`src/services/news-cluster.ts`](src/services/news-cluster.ts) |
+| Personalized Telegram alerts | Shipped | [`src/services/telegram-prefs.ts`](src/services/telegram-prefs.ts) |
+| AI morning brief (cached) | Shipped | [`src/services/morning-brief.ts`](src/services/morning-brief.ts) |
+| Multi-source news clusters on `/intel` | Shipped | D1 + in-memory fallback |
 | Live poll (home + portfolio) | Shipped | `/api/live/poll` |
 
 ### Phase 2 — Market data & intelligence
@@ -45,19 +45,22 @@ A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Licensed foreign flow / proprietary volume | Blocked | Requires feed contract before UI |
-| Stock detail depth | Planned | [`src/ui/stocks.ts`](src/ui/stocks.ts) |
-| Fear/greed calibration with licensed index | Planned | [`src/services/investor-intel.ts`](src/services/investor-intel.ts) |
-| D1-backed cluster persistence | Planned | Migration `0005` tables exist; runtime still in-memory |
+| Stock detail depth | Shipped | Disclaimers, watchlist CTA on [`src/ui/stocks.ts`](src/ui/stocks.ts) |
+| Fear/greed transparency (methodology inputs) | Shipped | `FearGreedResult.inputs` in [`src/services/investor-intel.ts`](src/services/investor-intel.ts) |
+| D1-backed cluster persistence | Shipped | [`src/services/news-cluster-persist.ts`](src/services/news-cluster-persist.ts), `GET /api/clusters` |
+| Fear/greed with licensed index | Blocked | Needs licensed market data |
 
 ### Phase 3 — Platform & agents
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Streamable MCP (`/mcp`) | Planned | Currently HTTP 501 |
-| OAuth server (`/oauth/*`) | Planned | Discovery stubs only |
-| Web Push / email digests | Planned | Complement Telegram |
-| User accounts | Planned | Only if anonymous KV watchlists insufficient |
-| RUM → observability dashboard | Planned | `POST /api/rum` |
+| JSON-RPC MCP (`POST /mcp`) | Shipped | [`src/services/mcp-handler.ts`](src/services/mcp-handler.ts) — tools/list, tools/call |
+| OAuth `client_credentials` | Shipped | `OAUTH_CLIENT_ID` + `OAUTH_CLIENT_SECRET` → `POST /oauth/token` |
+| OAuth authorization code + user login | Planned | `/oauth/authorize` still 501 |
+| Web Push | Shipped (partial) | Subscribe + `/sw.js`; needs VAPID secrets for delivery |
+| Email digests | Planned | No mail provider wired |
+| User accounts | Planned | KV watchlists sufficient for now |
+| RUM observability | Shipped (partial) | KV aggregates on `/status`, `GET /api/rum/summary` |
 
 ### Out of scope
 
@@ -74,9 +77,9 @@ A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | EA → COO → CSO → QA pipeline | Shipped | [`CompanyOrchestrator.ts`](OneManCompany/apps/api/src/core/orchestration/CompanyOrchestrator.ts) |
-| CEO chat wired to API | Planned | UI is local-only today |
-| Real agent tools (not stubs) | Planned | [`registry.ts`](OneManCompany/apps/api/src/core/agents/registry.ts) |
-| Workflow create/run API | Planned | Read-only GET today |
+| CEO chat wired to API | Shipped | Chat tab triggers objective pipeline |
+| Agent tool descriptions | Shipped | No longer stub-only labels |
+| Workflow create/run API | Shipped | `POST /api/workflows/company/:id`, `POST /api/workflows/:id/run` |
 
 ### OMC Phase 2 — Live simulation
 
@@ -90,7 +93,7 @@ A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI 
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Separate deploy + README | Planned | Independent `wrangler.toml` |
+| Separate deploy + README | Shipped | [`OneManCompany/README.md`](OneManCompany/README.md) |
 | Vitest for orchestrator | Planned | JSON fallback coverage |
 
 ---
@@ -101,12 +104,14 @@ A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI 
 |------|------|
 | HTTP routes | [`src/index.ts`](src/index.ts) |
 | Refresh cron | [`src/services/refresh.ts`](src/services/refresh.ts) |
-| Watchlist | [`src/services/watchlist.ts`](src/services/watchlist.ts) |
-| Telegram | [`src/services/telegram-bot.ts`](src/services/telegram-bot.ts) |
-| Morning brief | [`src/services/morning-brief.ts`](src/services/morning-brief.ts) |
-| Investor intel | [`src/services/investor-intel.ts`](src/services/investor-intel.ts) |
-| Design system | [`src/ui/theme.ts`](src/ui/theme.ts), [`.cursor/rules/stocknews-design-system.mdc`](.cursor/rules/stocknews-design-system.mdc) |
+| Cluster persistence | [`src/services/news-cluster-persist.ts`](src/services/news-cluster-persist.ts) |
+| MCP | [`src/services/mcp-handler.ts`](src/services/mcp-handler.ts) |
+| OAuth tokens | [`src/services/oauth-token.ts`](src/services/oauth-token.ts) |
+| Web Push | [`src/services/web-push.ts`](src/services/web-push.ts) |
+| RUM | [`src/services/rum-metrics.ts`](src/services/rum-metrics.ts) |
 
 ## Deploy
 
-Main site: `npx wrangler deploy` from repo root (see [`README.md`](README.md)).
+Main site: `npx wrangler deploy` from repo root.
+
+Optional secrets: `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.

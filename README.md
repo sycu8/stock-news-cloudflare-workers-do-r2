@@ -149,7 +149,7 @@ In `.dev.vars`:
 - **Optional AI Gateway** (analytics, caching, rate limits): set `AI_GATEWAY_ID` + `AI_GATEWAY_ACCOUNT_ID` (same hex as `account_id` in `wrangler.toml`) in `[vars]`, then `CF_AIG_TOKEN` in secrets. OpenAI `fetch` targets `https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/openai/chat/completions` per [OpenAI provider routing](https://developers.cloudflare.com/ai-gateway/usage/providers/openai/). Workers `AI.run` also receives `gateway: { id }` when `AI_GATEWAY_ID` is set.
 - **Optional Workers AI overrides**: `WORKERS_AI_MODEL_SUMMARY`, `WORKERS_AI_MODEL_EXPLAIN` (defaults to summary model if unset), `WORKERS_AI_MODEL_IMAGE` (thumbnail generation; default SDXL Lightning)
 - `AI_GATEWAY_SKIP_CACHE`: set to `false` to allow gateway-side cache on Workers AI runs (default skips cache)
-- `ALLOW_ADMIN_QUERY_TOKEN`: optional emergency compatibility flag. Keep unset/`false`; admin should use `/admin/login` cookie auth or the `x-admin-token` header so secrets do not leak into URLs/logs.
+- Admin auth: use `/admin/login` cookie or `x-admin-token` header (query-string tokens are not supported).
 
 Set production secrets:
 
@@ -186,7 +186,7 @@ Current key bindings in `wrangler.toml`:
 - **WebMCP** ([spec](https://webmachinelearning.github.io/webmcp/)): the home page registers `navigator.modelContext.registerTool()` tools at the end of the document (with retries for late `modelContext`), including navigation, `/api/news/today` fetch, scroll targets, and AI Explain.
 - `GET /openapi.json`: minimal OpenAPI 3.1 document for public read endpoints.
 - `POST /admin/refresh`: manually trigger refresh (`x-admin-token` header).
-- `GET /admin/login`: admin cookie login. API-style admin calls can use `x-admin-token`; query-string tokens are disabled unless `ALLOW_ADMIN_QUERY_TOKEN=true`.
+- `GET /admin/login`: admin cookie login. API-style admin calls use `x-admin-token` header only.
 - `POST /admin/sources`: add source (`rss` or `html_list`).
 - `POST /admin/sources/:id/toggle`: enable/disable source.
 - `POST /admin/sources/:id/delete`: delete custom source.

@@ -911,3 +911,110 @@ function mapNewsSourceRow(row: NewsSourceRow): NewsSourceRecord {
     updatedAt: row.updated_at
   };
 }
+
+export interface NewsClusterRow {
+  id: number;
+  cluster_key: string;
+  canonical_title: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  source_count: number;
+  confidence_label: string;
+}
+
+export async function upsertNewsCluster(
+  db: D1Database,
+  input: {
+    clusterKey: string;
+    canonicalTitle: string;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    sourceCount: number;
+    confidenceLabel: string;
+  }
+): Promise<number> {
+  await db
+    .prepare(
+      `INSERT INTO news_clusters (cluster_key, canonical_title, first_seen_at, last_seen_at, source_count, confidence_label)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+       ON CONFLICT(cluster_key) DO UPDATE SET
+         canonical_title = excluded.canonical_title,
+         last_seen_at = excluded.last_seen_at,
+         source_count = MAX(news_clusters.source_count, excluded.source_count),
+         confidence_label = excluded.confidence_label`
+    )
+    .bind(
+      input.clusterKey,
+      input.canonicalTitle,
+      input.firstSeenAt,
+      input.lastSeenAt,
+      input.sourceCount,
+      input.confidenceLabel
+    )
+    .run();
+  const row = await db
+    .prepare(`SELECT id FROM news_clusters WHERE cluster_key = ?1 LIMIT 1`)
+    .bind(input.clusterKey)
+    .first<{ id: number }>();
+  return row?.id ?? 0;
+}
+
+export async function linkArticleToCluster(db: D1Database, articleId: number, clusterId: number): Promise<void> {
+  if (!articleId || !clusterId) return;
+  await db
+    .prepare(
+      `INSERT INTO article_cluster_map (article_id, cluster_id) VALUES (?1, ?2)
+       ON CONFLICT(article_id) DO UPDATE SET cluster_id = excluded.cluster_id`
+    )
+    .bind(articleId, clusterId)
+    .run();
+}
+
+export async function listClustersForReportDate(
+  db: D1Database,
+  reportDate: string,
+  minSourceCount = 2,
+  limit = 40
+): Promise<
+  Array<{
+    id: number;
+    clusterKey: string;
+    canonicalTitle: string;
+    sourceCount: number;
+    confidenceLabel: string;
+    lastSeenAt: string;
+    leadUrl: string | null;
+  }>
+> {
+  const { results } = await db
+    .prepare(
+      `SELECT nc.id, nc.cluster_key, nc.canonical_title, nc.source_count, nc.confidence_label, nc.last_seen_at,
+              (
+                SELECT a.url FROM article_cluster_map acm
+                JOIN articles a ON a.id = acm.article_id
+                WHERE acm.cluster_id = nc.id AND date(a.published_at) = ?1
+                ORDER BY a.published_at DESC LIMIT 1
+              ) AS lead_url
+       FROM news_clusters nc
+       WHERE nc.source_count >= ?2
+         AND EXISTS (
+           SELECT 1 FROM article_cluster_map acm
+           JOIN articles a ON a.id = acm.article_id
+           WHERE acm.cluster_id = nc.id AND date(a.published_at) = ?1
+         )
+       ORDER BY nc.last_seen_at DESC
+       LIMIT ?3`
+    )
+    .bind(reportDate, minSourceCount, limit)
+    .all<NewsClusterRow & { lead_url: string | null }>();
+  return results.map((r) => ({
+    id: r.id,
+    clusterKey: r.cluster_key,
+    canonicalTitle: r.canonical_title,
+    sourceCount: r.source_count,
+    confidenceLabel: r.confidence_label,
+    lastSeenAt: r.last_seen_at,
+    leadUrl: r.lead_url
+  }));
+}
+

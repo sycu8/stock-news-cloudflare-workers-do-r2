@@ -1,4 +1,4 @@
-/** RFC 8288 / RFC 9727 / RFC 9264 agent discovery (Link headers, API catalog linkset). */
+import { mcpToolsForServerCard } from "./mcp-handler";
 
 const RFC9727_PROFILE = "https://www.rfc-editor.org/info/rfc9727";
 
@@ -74,19 +74,19 @@ export function buildMcpServerCard(origin: string): Record<string, unknown> {
       version: "1.0.0"
     },
     description:
-      "Vietnam market news and data worker. Primary machine interface is HTTP JSON and RSS per OpenAPI; streamable MCP is not yet implemented on this deployment.",
+      "Vietnam market news and data worker. HTTP JSON, RSS, and JSON-RPC MCP tools at POST /mcp.",
     documentationUrl: `${o}/docs/api`,
     transport: {
       type: "streamable-http",
       endpoint: "/mcp"
     },
     capabilities: {
-      tools: {},
+      tools: Object.fromEntries(mcpToolsForServerCard().map((t) => [t.name, { description: t.description }])),
       resources: {},
       prompts: {}
     },
     instructions:
-      "Use GET /openapi.json and /.well-known/api-catalog for HTTP APIs. The /mcp path is reserved for a future streamable MCP transport and currently returns HTTP 501."
+      "POST JSON-RPC 2.0 to /mcp (initialize, tools/list, tools/call). HTTP APIs: /openapi.json and /.well-known/api-catalog."
   };
 }
 
@@ -194,7 +194,12 @@ export const PUBLIC_API_CATALOG_ENTRIES: ApiCatalogEntry[] = [
   { apiPath: "/sitemap.xml", docSlug: "sitemap-xml", title: "XML sitemap" },
   { apiPath: "/robots.txt", docSlug: "robots-txt", title: "robots.txt" },
   { apiPath: "/health", docSlug: "health", title: "Liveness probe (JSON)" },
-  { apiPath: "/api/intel/daily", docSlug: "api-intel-daily", title: "Investor desk daily snapshot JSON (R2)" }
+  { apiPath: "/api/intel/daily", docSlug: "api-intel-daily", title: "Investor desk daily snapshot JSON (R2)" },
+  { apiPath: "/api/watchlist", docSlug: "api-watchlist", title: "Portfolio watchlist (cookie + KV)" },
+  { apiPath: "/api/live/poll", docSlug: "api-live-poll", title: "Lightweight live article poll JSON" },
+  { apiPath: "/api/clusters", docSlug: "api-clusters", title: "Multi-source news clusters for a day" },
+  { apiPath: "/api/rum/summary", docSlug: "api-rum-summary", title: "RUM aggregate summary (experimental)" },
+  { apiPath: "/api/push/vapid", docSlug: "api-push-vapid", title: "Web Push VAPID public key" }
 ];
 
 export function buildOpenApiDocument(origin: string): Record<string, unknown> {
@@ -265,7 +270,32 @@ export function buildOpenApiDocument(origin: string): Record<string, unknown> {
           summary: "Investor desk snapshot (Fear/Greed, sectors, smart-money proxy)",
           parameters: [{ name: "date", in: "query", required: true, schema: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" } }]
         }
-      }
+      },
+      "/api/watchlist": {
+        get: { summary: "Read watchlist symbols (cookie sn_watch_id + vnwatch)" },
+        post: { summary: "Save watchlist symbols JSON body { symbols: string[] }" }
+      },
+      "/api/live/poll": {
+        get: {
+          summary: "Poll new articles since timestamp",
+          parameters: [
+            { name: "date", in: "query", schema: { type: "string" } },
+            { name: "since", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+            { name: "mode", in: "query", schema: { type: "string", enum: ["home", "portfolio"] } }
+          ]
+        }
+      },
+      "/api/clusters": {
+        get: {
+          summary: "D1-backed multi-source clusters",
+          parameters: [
+            { name: "date", in: "query", schema: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" } },
+            { name: "minSources", in: "query", schema: { type: "integer", minimum: 1 } }
+          ]
+        }
+      },
+      "/api/rum/summary": { get: { summary: "Experimental RUM aggregates (KV)" } },
+      "/api/push/vapid": { get: { summary: "Web Push VAPID public key when configured" } }
     }
   };
 }
@@ -298,7 +328,7 @@ export function renderApiDocsHtml(origin: string): string {
      <a href="${o}/.well-known/jwks.json"><code>/.well-known/jwks.json</code></a>,
      <a href="${o}/.well-known/http-message-signatures-directory"><code>/.well-known/http-message-signatures-directory</code></a> (Web Bot Auth JWKS + signed directory).</p>
   <p>Public JSON/RSS endpoints need no token; operator routes use the admin token as documented below.</p>
-  <p>MCP Server Card (SEP-1649): <a href="${o}/.well-known/mcp/server-card.json"><code>/.well-known/mcp/server-card.json</code></a> — discovery only; streamable MCP is not active yet.</p>
+  <p>MCP Server Card (SEP-1649): <a href="${o}/.well-known/mcp/server-card.json"><code>/.well-known/mcp/server-card.json</code></a> — POST JSON-RPC to <code>/mcp</code>.</p>
   ${section(
     "api-news-today",
     "GET /api/news/today",

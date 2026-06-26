@@ -343,6 +343,11 @@ export function renderMarketsDesk(params: { reportDate: string; snap: InvestorDa
           )}</div></div>
         </div>
         <div class="meter" style="max-width:520px" aria-hidden="true"><span style="width:${snap.fearGreed.value}%"></span></div>
+        ${
+          snap.fearGreed.inputs
+            ? `<p style="color:var(--muted);font-size:.78rem;margin-top:10px;">Phương pháp: ${esc(snap.fearGreed.inputs.methodology)} · tilt ${snap.fearGreed.inputs.sentimentTilt.toFixed(2)} · VN-Index 1w ${snap.fearGreed.inputs.vn1wChangePct != null ? `${snap.fearGreed.inputs.vn1wChangePct.toFixed(2)}%` : "n/a"}</p>`
+            : ""
+        }
       </div>
       <div class="deskCard" id="sectors" style="grid-column:1/-1;">
         <h3>Sector rotation</h3>
