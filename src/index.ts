@@ -116,6 +116,18 @@ import {
 } from "./ui/investor-desk";
 import { searchArticlesWithCloudflareAi } from "./services/ai-search";
 import { crawlWebsiteIntoContainer, getWebsiteContainerDocs } from "./services/site-crawl-container";
+import { collapseDuplicateNews } from "./services/news-cluster";
+import { generateMorningBriefIfNeeded, loadMorningBrief, buildPersonalizedBriefNote } from "./services/morning-brief";
+import {
+  WATCH_ID_COOKIE,
+  WATCH_ID_COOKIE_MAX_AGE,
+  loadWatchlist,
+  newWatchId,
+  parseWatchId,
+  parseWatchlistCsv,
+  saveWatchlist,
+  watchlistToCsv
+} from "./services/watchlist";
 const app = new Hono<{ Bindings: Env }>();
 const ADMIN_COOKIE_NAME = "admin_token";
 const ADMIN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
@@ -478,6 +490,45 @@ function portfolioSymbolsFromCookie(c: Context<{ Bindings: Env }>): string[] {
   }
 }
 
+function ensureWatchIdOnResponse(c: Context<{ Bindings: Env }>): string {
+  const existing = parseWatchId(getCookieValue(c, WATCH_ID_COOKIE));
+  if (existing) return existing;
+  const id = newWatchId();
+  c.header(
+    "Set-Cookie",
+    `${WATCH_ID_COOKIE}=${id}; Path=/; Max-Age=${WATCH_ID_COOKIE_MAX_AGE}; SameSite=Lax`,
+    { append: true }
+  );
+  return id;
+}
+
+async function resolvePortfolioSymbols(
+  c: Context<{ Bindings: Env }>
+): Promise<{ symbols: string[]; watchId: string | null; cloudSynced: boolean }> {
+  const cookieSymbols = portfolioSymbolsFromCookie(c);
+  const watchId = parseWatchId(getCookieValue(c, WATCH_ID_COOKIE));
+  if (!watchId) {
+    return { symbols: cookieSymbols, watchId: null, cloudSynced: false };
+  }
+  const cloud = await loadWatchlist(c.env, watchId);
+  if (cloud?.symbols.length) {
+    return { symbols: cloud.symbols, watchId, cloudSynced: true };
+  }
+  return { symbols: cookieSymbols, watchId, cloudSynced: false };
+}
+
+function setPortfolioCookies(c: Context<{ Bindings: Env }>, symbols: string[]): void {
+  const val = encodeURIComponent(symbols.join(","));
+  c.header("Set-Cookie", `${PORTFOLIO_COOKIE}=${val}; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`);
+  if (symbols.length > 0) {
+    c.header(
+      "Set-Cookie",
+      `${PORTFOLIO_ONBOARDING_COOKIE}=1; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`,
+      { append: true }
+    );
+  }
+}
+
 async function buildDeskSnapshotForDate(env: Env, reportDate: string) {
   const feed = await getFeedByDate(env, reportDate, { page: 1, pageSize: 200 });
   const sentiment = analyzeSentimentForArticles(feed.articles);
@@ -513,10 +564,23 @@ app.get("/briefing", async (c) => {
   try {
     const reportDate = deskReportDate(c);
     const { feed, snap } = await buildDeskSnapshotForDate(c.env, reportDate);
-    return c.html(renderMorningBriefing({ reportDate, report: feed.report, snap, appearance: readAppearance(c) }), 200, {
-      "cache-control": htmlCacheControl(),
-      "content-language": "vi"
-    });
+    let morningBrief = await loadMorningBrief(c.env, reportDate);
+    if (!morningBrief) {
+      morningBrief = await generateMorningBriefIfNeeded(c.env, reportDate, feed.report, feed.articles);
+    }
+    const { symbols } = await resolvePortfolioSymbols(c);
+    const personalizedNoteVi = buildPersonalizedBriefNote(feed.articles, symbols);
+    if (morningBrief && personalizedNoteVi) {
+      morningBrief = { ...morningBrief, personalizedNoteVi };
+    }
+    return c.html(
+      renderMorningBriefing({ reportDate, report: feed.report, snap, morningBrief, appearance: readAppearance(c) }),
+      200,
+      {
+        "cache-control": htmlCacheControl(),
+        "content-language": "vi"
+      }
+    );
   } catch (error) {
     console.error("GET /briefing failed:", error);
     return c.text("Internal Server Error", 500);
@@ -550,7 +614,7 @@ app.get("/portfolio", async (c) => {
       return c.redirect(dest, 302);
     }
     const reportDate = deskReportDate(c);
-    const symbols = portfolioSymbolsFromCookie(c);
+    const { symbols, watchId, cloudSynced } = await resolvePortfolioSymbols(c);
     const feed = await getFeedByDate(c.env, reportDate, { page: 1, pageSize: 200 });
     const filtered = symbols.length ? filterArticlesForPortfolio(feed.articles, symbols) : feed.articles;
     const flash = c.req.query("saved") === "1" ? "Đã lưu danh sách theo dõi." : undefined;
@@ -568,7 +632,9 @@ app.get("/portfolio", async (c) => {
         flash,
         appearance: readAppearance(c),
         showOnboarding,
-        formInputValue
+        formInputValue,
+        watchId,
+        cloudSynced
       }),
       200,
       { "cache-control": htmlCacheControl(), "content-language": "vi" }
@@ -584,18 +650,9 @@ app.post("/portfolio", async (c) => {
     const fd = await c.req.formData();
     const raw = String(fd.get("symbols") ?? "");
     const symbols = parsePortfolioSymbols(raw);
-    const val = encodeURIComponent(symbols.join(","));
-    c.header(
-      "Set-Cookie",
-      `${PORTFOLIO_COOKIE}=${val}; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`
-    );
-    if (symbols.length > 0) {
-      c.header(
-        "Set-Cookie",
-        `${PORTFOLIO_ONBOARDING_COOKIE}=1; Path=/; Max-Age=${PORTFOLIO_COOKIE_MAX_AGE}; SameSite=Lax`,
-        { append: true }
-      );
-    }
+    setPortfolioCookies(c, symbols);
+    const watchId = ensureWatchIdOnResponse(c);
+    await saveWatchlist(c.env, watchId, { symbols });
     return c.redirect("/portfolio?saved=1", 302);
   } catch (error) {
     console.error("POST /portfolio failed:", error);
@@ -603,13 +660,97 @@ app.post("/portfolio", async (c) => {
   }
 });
 
+app.post("/portfolio/import", async (c) => {
+  try {
+    const fd = await c.req.formData();
+    const file = fd.get("file");
+    let text = "";
+    if (file && typeof file === "object" && "text" in file && typeof (file as File).text === "function") {
+      text = await (file as File).text();
+    } else {
+      text = String(fd.get("symbols") ?? "");
+    }
+    const symbols = parseWatchlistCsv(text);
+    if (!symbols.length) {
+      return c.text("CSV không có mã hợp lệ", 400);
+    }
+    setPortfolioCookies(c, symbols);
+    const watchId = ensureWatchIdOnResponse(c);
+    await saveWatchlist(c.env, watchId, { symbols });
+    return c.redirect("/portfolio?saved=1", 302);
+  } catch (error) {
+    console.error("POST /portfolio/import failed:", error);
+    return c.text("Bad Request", 400);
+  }
+});
+
+app.get("/api/watchlist", async (c) => {
+  const watchId = parseWatchId(getCookieValue(c, WATCH_ID_COOKIE));
+  const cookieSymbols = portfolioSymbolsFromCookie(c);
+  if (!watchId) {
+    return c.json({ watchId: null, symbols: cookieSymbols, source: "cookie" }, 200, {
+      "cache-control": "private, no-store"
+    });
+  }
+  const cloud = await loadWatchlist(c.env, watchId);
+  const symbols = cloud?.symbols.length ? cloud.symbols : cookieSymbols;
+  return c.json(
+    {
+      watchId,
+      symbols,
+      name: cloud?.name ?? null,
+      updatedAt: cloud?.updatedAt ?? null,
+      source: cloud?.symbols.length ? "kv" : "cookie"
+    },
+    200,
+    { "cache-control": "private, no-store" }
+  );
+});
+
+app.post("/api/watchlist", async (c) => {
+  try {
+    const body = (await c.req.json()) as { symbols?: unknown; name?: string };
+    const symbols = parsePortfolioSymbols(Array.isArray(body.symbols) ? body.symbols.join(",") : String(body.symbols ?? ""));
+    const watchId = ensureWatchIdOnResponse(c);
+    const record = await saveWatchlist(c.env, watchId, { symbols, name: body.name });
+    setPortfolioCookies(c, symbols);
+    return c.json({ ok: true, watchId, ...record }, 200, { "cache-control": "private, no-store" });
+  } catch (error) {
+    console.error("POST /api/watchlist failed:", error);
+    return c.json({ error: "invalid_body" }, 400);
+  }
+});
+
+app.get("/api/watchlist/export", async (c) => {
+  const q = (c.req.query("symbols") ?? "").trim();
+  const symbols = q ? parsePortfolioSymbols(q) : portfolioSymbolsFromCookie(c);
+  const csv = watchlistToCsv(symbols);
+  return new Response(csv, {
+    status: 200,
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": 'attachment; filename="watchlist.csv"',
+      "cache-control": "private, no-store"
+    }
+  });
+});
+
 app.get("/intel", async (c) => {
   try {
-    const dates = await listIntelArchiveDates(c.env);
-    return c.html(renderIntelArchive({ dates, appearance: readAppearance(c) }), 200, {
-      "cache-control": htmlCacheControl(),
-      "content-language": "vi"
-    });
+    const reportDate = getTodayDateKey();
+    const [dates, feed] = await Promise.all([
+      listIntelArchiveDates(c.env),
+      getFeedByDate(c.env, reportDate, { page: 1, pageSize: 200 })
+    ]);
+    const clusters = collapseDuplicateNews(feed.articles);
+    return c.html(
+      renderIntelArchive({ dates, clusters, reportDate, appearance: readAppearance(c) }),
+      200,
+      {
+        "cache-control": htmlCacheControl(),
+        "content-language": "vi"
+      }
+    );
   } catch (error) {
     console.error("GET /intel failed:", error);
     return c.text("Internal Server Error", 500);

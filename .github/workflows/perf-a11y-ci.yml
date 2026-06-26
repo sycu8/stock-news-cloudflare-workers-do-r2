@@ -18,6 +18,8 @@ jobs:
         run: npm ci
       - name: TypeScript check
         run: npm run check
+      - name: Unit tests
+        run: npm run test:article
       - name: Run worker for CI checks
         run: |
           npm run dev -- --local --port 8787 > worker.log 2>&1 &

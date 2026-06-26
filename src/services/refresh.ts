@@ -32,13 +32,13 @@ import { ensureGeneratedThumbnail } from "./image-gen";
 import { analyzeSentimentForArticles } from "./sentiment";
 import { collapseDuplicateNews } from "./news-cluster";
 import { ensureOptimizedImageAsset } from "./image-cache";
-import { broadcastTelegramMessage, getTelegramSubscriberCount, isTelegramNotifyConfigured } from "./telegram-bot";
+import { notifySubscribersOfNewArticles } from "./telegram-bot";
+import { generateMorningBriefIfNeeded } from "./morning-brief";
 import { getFxMarketSnapshot, getGoldMarketSnapshot } from "./market-extra";
 import { precomputeExplainCacheIfNeeded } from "./news-explain-cache";
 import { defaultNoFeedOverviewCopy } from "./vietnam-holidays";
 import { hotScore } from "./article-heat";
 import { buildDailyInvestorSnapshot, persistInvestorDailySnapshot } from "./investor-intel";
-import { buildTelegramArticleHref } from "./telegram-article-link";
 
 const DAILY_CACHE_KEY = "today-report-cache";
 const LAST_GOOD_FEED_KEY = "today-report-last-good";
@@ -193,7 +193,12 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
     aiOk: Boolean(env.AI || env.OPENAI_API_KEY),
     articleCount: finalizedArticles.length
   });
-  await notifyNewArticlesViaTelegram(env, finalizedArticles, newlySeenUrls);
+  await notifySubscribersOfNewArticles(env, finalizedArticles, newlySeenUrls);
+  try {
+    await generateMorningBriefIfNeeded(env, reportDate, report, finalizedArticles);
+  } catch (e) {
+    console.error("morning brief:", e);
+  }
   try {
     const hsxForIntel = await getHSXMarketSnapshot(env);
     const intelSnap = buildDailyInvestorSnapshot({
@@ -226,49 +231,6 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
     summarizedCount,
     report
   };
-}
-
-async function notifyNewArticlesViaTelegram(env: Env, articles: StoredArticle[], newUrls: Set<string>): Promise<void> {
-  if (!newUrls.size) return;
-  if (!isTelegramNotifyConfigured(env)) return;
-  const subscriberCount = await getTelegramSubscriberCount(env);
-  if (subscriberCount <= 0) return;
-
-  const news = articles
-    .filter((item) => newUrls.has(item.url))
-    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
-    .slice(0, 20);
-  if (!news.length) return;
-
-  const lines: string[] = [`🆕 <b>Có ${news.length} bài mới vừa crawl</b>`];
-  for (let i = 0; i < news.length; i += 1) {
-    const item = news[i]!;
-    const summary = (item.summaryVi ?? item.snippet ?? "").trim().slice(0, 180);
-    const articleHref = buildTelegramArticleHref(item);
-    lines.push(
-      "",
-      `<b>${i + 1}. ${escapeTelegramHtml(item.title)}</b>`,
-      `${escapeTelegramHtml(item.sourceName)} • ${escapeTelegramHtml(item.publishedAt)}`,
-      summary ? `<i>${escapeTelegramHtml(summary)}</i>` : "",
-      `<a href="${escapeTelegramAttr(articleHref)}">Đọc bài trên vietstock.info</a>`
-    );
-  }
-  let text = lines.filter(Boolean).join("\n");
-  if (text.length > 3900) {
-    text = `${text.slice(0, 3850)}\n\n... (rút gọn, mở trang để xem đầy đủ)`;
-  }
-  await broadcastTelegramMessage(env, text);
-}
-
-function escapeTelegramHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeTelegramAttr(input: string): string {
-  return input.replace(/"/g, "&quot;");
 }
 
 export async function getTodayFeed(env: Env, sourceFilter?: string): Promise<TodayFeedResponse> {
