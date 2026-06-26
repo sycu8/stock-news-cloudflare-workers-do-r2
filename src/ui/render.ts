@@ -1820,7 +1820,7 @@ function renderVNIndexMultiRangeChart(snapshot: HSXMarketSnapshot): string {
     { id: "1m", label: "Tháng", points: snapshot.vnindex1M },
     { id: "1y", label: "Năm", points: snapshot.vnindex1Y }
   ];
-  const defaultRangeId: "1w" | "1m" | "1y" = "1y";
+  const defaultRangeId: "1w" | "1m" | "1y" = "1w";
   const hasAny = tabs.some((t) => t.points.length > 0);
   if (!hasAny) return '<p class="muted">Chưa lấy được dữ liệu VNINDEX.</p>';
 
