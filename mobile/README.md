@@ -27,6 +27,16 @@ npm install
 npx cap sync
 ```
 
+### Upload to Google Play (ready now)
+
+Download **`dist/stocknews-play-upload-kit.zip`** — contains:
+
+- `app-release.aab` (signed release)
+- Store listing copy + **PLAY_CONSOLE_WIZARD.md** (click-by-click)
+- 2 phone screenshots
+
+Then follow `store/PLAY_CONSOLE_WIZARD.md`.
+
 ### Android (release AAB for Play Store)
 
 ```bash

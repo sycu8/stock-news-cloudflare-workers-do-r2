@@ -18,8 +18,13 @@ Built in this workspace:
 
 | File | Purpose |
 |------|---------|
-| `mobile/dist/app-release.aab` | **Upload to Google Play Console** |
+| `mobile/dist/stocknews-play-upload-kit.zip` | **All-in-one:** AAB + listing text + wizard + screenshots |
+| `mobile/dist/app-release.aab` | Upload to Google Play Console |
 | `mobile/dist/stocknews-android-signing.zip` | Keystore + passwords (keep safe; future updates) |
+| `mobile/dist/screenshots/home.png` | Store screenshot 1 |
+| `mobile/dist/screenshots/desk.png` | Store screenshot 2 |
+
+**Play Console walkthrough:** `mobile/store/PLAY_CONSOLE_WIZARD.md` (click-by-click)
 
 Regenerate locally:
 
@@ -32,12 +37,13 @@ chmod +x scripts/*.sh
 
 ### 2. Google Play — internal test (today)
 
-1. https://play.google.com/console → Create app **Stock News**
-2. Download **`mobile/dist/app-release.aab`** from this workspace
-3. Play Console → **Release → Internal testing** → upload AAB
-4. Add your Gmail as tester → install on phone
-5. Store listing: `PLAY_STORE_LISTING.md` · Data safety: `DATA_SAFETY.md`
-6. Privacy policy URL: `https://stocknews.orangecloud.vn/privacy`
+Follow **`PLAY_CONSOLE_WIZARD.md`** (step-by-step).
+
+1. Download **`mobile/dist/stocknews-play-upload-kit.zip`** (or just `app-release.aab`)
+2. https://play.google.com/console → Create app **Stock News**
+3. Complete **App content** checklist (privacy, ads, rating, data safety)
+4. **Release → Internal testing** → upload AAB
+5. Add tester Gmail → install on phone
 
 ### 3. Apple — Cloudspace enrollment (parallel)
 
