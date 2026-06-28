@@ -1077,8 +1077,7 @@ app.get("/.well-known/assetlinks.json", (c) => {
 });
 
 app.get("/.well-known/apple-app-site-association", (c) => {
-  const origin = new URL(c.req.url).origin;
-  return c.json(buildAppleAppSiteAssociation(origin), 200, {
+  return c.json(buildAppleAppSiteAssociation(c.env.APPLE_TEAM_ID), 200, {
     "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800",
     "content-type": "application/json"
   });

@@ -12,3 +12,4 @@ ios/App/App/public/
 ios/DerivedData/
 .capacitor/
 *.log
+store/CREDENTIALS.local.md

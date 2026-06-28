@@ -1,4 +1,4 @@
-/** Android App Links — replace SHA256 with release keystore fingerprint before production. */
+/** Android App Links — release keystore SHA-256 (Cloudspace / Orange Cloud). */
 export function buildAssetLinksJson(): unknown[] {
   return [
     {
@@ -7,28 +7,29 @@ export function buildAssetLinksJson(): unknown[] {
         namespace: "android_app",
         package_name: "vn.orangecloud.stocknews",
         sha256_cert_fingerprints: [
-          "REPLACE_WITH_RELEASE_SHA256_FINGERPRINT",
-          "14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:EF:EA:A3:0D:CF:12:10:BC:EA"
+          "95:CC:09:05:0E:98:5C:36:83:ED:BD:E3:2F:6E:18:49:4B:D3:8E:47:7A:4D:3B:82:A2:29:C3:91:56:30:27:D2"
         ]
       }
     }
   ];
 }
 
-/** iOS Universal Links — replace TEAMID with Apple Developer Team ID before production. */
-export function buildAppleAppSiteAssociation(_origin: string): Record<string, unknown> {
+/** iOS Universal Links — set APPLE_TEAM_ID Worker var after Cloudspace Apple enrollment. */
+export function buildAppleAppSiteAssociation(teamId?: string): Record<string, unknown> {
+  const tid = teamId?.trim() || "TEAMID";
+  const appId = `${tid}.vn.orangecloud.stocknews`;
   return {
     applinks: {
       apps: [],
       details: [
         {
-          appID: "TEAMID.vn.orangecloud.stocknews",
+          appID: appId,
           paths: ["/tin/*", "/stocks/*", "/article", "/notify", "/desk", "/portfolio", "/briefing", "/"]
         }
       ]
     },
     webcredentials: {
-      apps: ["TEAMID.vn.orangecloud.stocknews"]
+      apps: [appId]
     }
   };
 }
