@@ -79,6 +79,15 @@ Store `image_id` + variant in D1 if you migrate logos/thumbnails off R2. Those U
 
 Longer-term direction for **stocknews.orangecloud.vn** is documented in the assistant design note (AI terminal, watchlists, briefings, alerts). Implementation should be phased; data-heavy features (volume, foreign flow) need explicit licensed feeds before UI promises go live.
 
+## Mobile apps (iOS & Android)
+
+Capacitor native shells live in **`mobile/`** — see [mobile/README.md](mobile/README.md) for build and store submission steps.
+
+- **App ID:** `vn.orangecloud.stocknews`
+- **Privacy:** https://stocknews.orangecloud.vn/privacy
+- **Terms:** https://stocknews.orangecloud.vn/terms
+- **Store guides:** `mobile/store/SUBMISSION_CHECKLIST.md`
+
 ## Main Project Structure
 
 ```text
