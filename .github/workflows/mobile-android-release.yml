@@ -35,7 +35,7 @@ jobs:
       - name: Install deps
         run: npm ci
       - name: Restore keystore
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        if: secrets.ANDROID_KEYSTORE_BASE64 != ''
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -52,9 +52,7 @@ jobs:
       - name: Capacitor sync
         run: npx cap sync android
       - name: Build release AAB
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        if: secrets.ANDROID_KEYSTORE_BASE64 != ''
         run: cd android && ./gradlew bundleRelease
       - name: Upload AAB artifact
         if: env.ANDROID_KEYSTORE_BASE64 != ''
