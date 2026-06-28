@@ -13,3 +13,4 @@ ios/DerivedData/
 .capacitor/
 *.log
 store/CREDENTIALS.local.md
+dist/

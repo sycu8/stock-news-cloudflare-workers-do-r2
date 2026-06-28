@@ -17,7 +17,7 @@ Store the keystore and passwords securely (password manager / CI secrets). **Nev
 Create `android/keystore.properties` (gitignored):
 
 ```properties
-storeFile=../stocknews-release.keystore
+storeFile=../../stocknews-release.keystore
 storePassword=YOUR_STORE_PASSWORD
 keyAlias=stocknews
 keyPassword=YOUR_KEY_PASSWORD
