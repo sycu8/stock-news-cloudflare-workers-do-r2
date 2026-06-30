@@ -141,12 +141,29 @@ Click **Publish** / **Save** on App Privacy when finished.
 4. **App Review Information** filled (email: support@orangecloud.vn)
 5. Click **Add for Review** → **Submit to App Review**
 
-### Export compliance (when prompted after selecting build)
+### Export compliance (encryption)
+
+Stock News **only uses HTTPS (TLS)** via iOS — no custom/proprietary encryption. **No documentation upload required.**
+
+**Info.plist** (already set):
+
+```xml
+<key>ITSAppUsesNonExemptEncryption</key>
+<false/>
+```
+
+**In Xcode:** Target **App** → **Info** → add key **App Uses Non-Exempt Encryption** = **NO**  
+(or rebuild after pulling latest — `INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO` in project)
+
+**App Store Connect** (when selecting build):
 
 | Question | Answer |
 |----------|--------|
-| Uses encryption? | **Yes** |
-| Exempt? | **Yes** — standard HTTPS only |
+| Does your app use encryption? | **Yes** |
+| Is it exempt (HTTPS only, standard TLS)? | **Yes** |
+| Upload documentation? | **No** — not required |
+
+You must **re-archive and upload a new build** if the warning appeared on an older upload without this key.
 
 ---
 
