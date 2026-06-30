@@ -99,6 +99,7 @@ import {
 } from "./ui/theme";
 import { buildCanonicalUrl } from "./ui/seo";
 import { buildWebManifest, renderPrivacyPolicyPage, renderTermsPage } from "./ui/legal";
+import { renderReleasesPage } from "./ui/releases";
 import { buildAppleAppSiteAssociation, buildAssetLinksJson } from "./ui/mobile-deep-links";
 import { hotScore } from "./services/article-heat";
 import {
@@ -1059,6 +1060,13 @@ app.get("/privacy", (c) => {
 app.get("/terms", (c) => {
   return c.html(renderTermsPage(readAppearance(c)), 200, {
     "cache-control": htmlCacheControl(),
+    "content-language": "vi"
+  });
+});
+
+app.get("/releases", (c) => {
+  return c.html(renderReleasesPage(readAppearance(c)), 200, {
+    "cache-control": "public, s-maxage=300, stale-while-revalidate=3600",
     "content-language": "vi"
   });
 });
