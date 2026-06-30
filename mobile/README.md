@@ -35,6 +35,8 @@ See **`dist/stocknews-play-upload-kit.zip`** and **`PLAY_CONSOLE_WIZARD.md`**.
 
 See **`store/APP_STORE_CONNECT_WIZARD.md`** and copy fields from **`store/app-store-connect-vi.txt`**.
 
+Screenshots (iPhone 6.7" + iPad 12.9"): **`store/APP_STORE_SCREENSHOTS.md`** — run `./scripts/capture-app-store-screenshots.sh`
+
 ### Android (release AAB for Play Store)
 
 ```bash

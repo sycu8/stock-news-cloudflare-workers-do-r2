@@ -142,7 +142,7 @@ Select **1.0.1** build after processing (~15–30 min).
 
 | Field | Value |
 |-------|--------|
-| **Screenshots** | iPhone 6.7" (1290×2796) min 3 — capture `/`, `/desk`, `/portfolio` in Safari or simulator |
+| **Screenshots** | iPhone 6.7" (1290×2796) + iPad 12.9" (2048×2732) min 3 each — see **`APP_STORE_SCREENSHOTS.md`** |
 | **Promotional Text** | from `app-store-connect-vi.txt` |
 | **Description** | from `app-store-connect-vi.txt` |
 | **Keywords** | chứng khoán,vietnam,stock,news,VN-Index,watchlist |
@@ -213,6 +213,8 @@ After upload, when asked:
 Capture in **Safari on iPhone** or **Xcode Simulator** → save PNG.
 
 Suggested screens: Homepage, `/desk`, `/portfolio`.
+
+Full sizes, script, and upload steps: **`APP_STORE_SCREENSHOTS.md`**
 
 ---
 

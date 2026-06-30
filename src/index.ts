@@ -677,6 +677,7 @@ app.get("/assets/*", async (c) => {
     else if (key.endsWith(".jpg") || key.endsWith(".jpeg")) headers.set("content-type", "image/jpeg");
     else if (key.endsWith(".webp")) headers.set("content-type", "image/webp");
     else if (key.endsWith(".aab")) headers.set("content-type", "application/vnd.android.package-archive");
+    else if (key.endsWith(".zip")) headers.set("content-type", "application/zip");
     else headers.set("content-type", "application/octet-stream");
   }
   return new Response(obj.body, { headers });
