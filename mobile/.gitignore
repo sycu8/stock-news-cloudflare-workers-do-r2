@@ -14,3 +14,7 @@ ios/DerivedData/
 *.log
 store/CREDENTIALS.local.md
 dist/
+*.certSigningRequest
+apple-signing/
+*.p12
+*.mobileprovision
