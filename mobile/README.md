@@ -29,13 +29,11 @@ npx cap sync
 
 ### Upload to Google Play (ready now)
 
-Download **`dist/stocknews-play-upload-kit.zip`** — contains:
+See **`dist/stocknews-play-upload-kit.zip`** and **`PLAY_CONSOLE_WIZARD.md`**.
 
-- `app-release.aab` (signed release)
-- Store listing copy + **PLAY_CONSOLE_WIZARD.md** (click-by-click)
-- 2 phone screenshots
+### Upload to App Store (Mac required)
 
-Then follow `store/PLAY_CONSOLE_WIZARD.md`.
+See **`store/APP_STORE_CONNECT_WIZARD.md`** and copy fields from **`store/app-store-connect-vi.txt`**.
 
 ### Android (release AAB for Play Store)
 
