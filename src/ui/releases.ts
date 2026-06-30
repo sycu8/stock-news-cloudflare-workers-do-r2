@@ -21,9 +21,24 @@ type DownloadItem = {
 const APP_STORE_KIT: DownloadItem = {
   label: "App Store screenshot kit (ZIP)",
   href: `${BASE}/stocknews-app-store-upload-kit.zip`,
-  desc: "iPhone 6.7\" + iPad 12.9\" — giải nén và kéo thả vào App Store Connect",
+  desc: "iPhone 6.7\", iPhone 6.5\", iPad 12.9\" — giải nén và kéo thả vào App Store Connect",
   primary: true
 };
+
+const IPHONE_65_KIT: DownloadItem = {
+  label: "iPhone 6.5\" Display — ZIP (1284×2778)",
+  href: `${BASE}/stocknews-app-store-iphone-6.5-screenshots.zip`,
+  desc: "5 ảnh đúng kích thước cho khung iPhone 6.5\" trong App Store Connect",
+  primary: true
+};
+
+const IPHONE_65_SHOTS = [
+  { label: "01-home.png", href: `${BASE}/app-store-screenshots/iphone-6.5/01-home.png`, desc: "Trang chủ tin tức" },
+  { label: "02-desk.png", href: `${BASE}/app-store-screenshots/iphone-6.5/02-desk.png`, desc: "Investor Desk" },
+  { label: "03-portfolio.png", href: `${BASE}/app-store-screenshots/iphone-6.5/03-portfolio.png`, desc: "Watchlist" },
+  { label: "04-stock-vnm.png", href: `${BASE}/app-store-screenshots/iphone-6.5/04-stock-vnm.png`, desc: "Chi tiết mã VNM" },
+  { label: "05-notify.png", href: `${BASE}/app-store-screenshots/iphone-6.5/05-notify.png`, desc: "Cài đặt thông báo" }
+];
 
 const IPHONE_SHOTS = [
   { label: "01-home.png", href: `${BASE}/app-store-screenshots/iphone-6.7/01-home.png`, desc: "Trang chủ tin tức" },
@@ -46,6 +61,11 @@ const OTHER_DOWNLOADS: DownloadItem[] = [
     label: "Tất cả screenshot App Store (ZIP)",
     href: `${BASE}/stocknews-app-store-screenshots-all.zip`,
     desc: "iPhone + iPad trong một file"
+  },
+  {
+    label: "Screenshot iPhone 6.5\" (ZIP)",
+    href: `${BASE}/stocknews-app-store-iphone-6.5-screenshots.zip`,
+    desc: "1284 × 2778 px"
   },
   {
     label: "Screenshot iPhone 6.7\" (ZIP)",
@@ -131,13 +151,16 @@ export function renderReleasesPage(appearance: Appearance): string {
     <p class="lead">Screenshot iPhone/iPad và file Android đã tạo sẵn — bấm để tải, không cần đăng nhập.</p>
 
     <h2>App Store — khuyến nghị</h2>
-    <div class="cards">${downloadCard(APP_STORE_KIT)}</div>
+    <div class="cards">${downloadCard(IPHONE_65_KIT)}${downloadCard(APP_STORE_KIT)}</div>
     <ol class="steps">
-      <li>Tải <strong>App Store screenshot kit</strong> ở trên</li>
-      <li>Giải nén → mở App Store Connect → Stock News → Previews and Screenshots</li>
-      <li>Kéo file trong <code>iphone-6.7-upload-here</code> vào iPhone 6.7"</li>
-      <li>Kéo file trong <code>ipad-12.9-upload-here</code> vào iPad 12.9"</li>
+      <li>Tải <strong>iPhone 6.5\" ZIP</strong> nếu App Store yêu cầu khung 6.5\"</li>
+      <li>Giải nén → App Store Connect → Stock News → Previews and Screenshots</li>
+      <li>Kéo 3–5 PNG vào <strong>iPhone 6.5\" Display</strong> (1284×2778)</li>
+      <li>iPad: dùng thư mục <code>ipad-12.9-upload-here</code> trong kit đầy đủ</li>
     </ol>
+
+    <h2>iPhone 6.5" Display — từng ảnh (1284×2778)</h2>
+    ${shotGrid(IPHONE_65_SHOTS)}
 
     <h2>iPhone 6.7" — từng ảnh (1290×2796)</h2>
     ${shotGrid(IPHONE_SHOTS)}

@@ -8,8 +8,10 @@ BASE="${1:-https://stocknews.orangecloud.vn}"
 OUT="$ROOT/dist/app-store-screenshots"
 
 # App Store Connect accepted sizes (portrait)
-IPHONE_W=1290
-IPHONE_H=2796
+IPHONE_67_W=1290
+IPHONE_67_H=2796
+IPHONE_65_W=1284
+IPHONE_65_H=2778
 IPAD_W=2048
 IPAD_H=2732
 
@@ -40,12 +42,18 @@ capture() {
   fi
 }
 
-mkdir -p "$OUT/iphone-6.7" "$OUT/ipad-12.9"
+mkdir -p "$OUT/iphone-6.7" "$OUT/iphone-6.5" "$OUT/ipad-12.9"
 
-echo "Capturing iPhone 6.7\" (${IPHONE_W}x${IPHONE_H}) ..."
+echo "Capturing iPhone 6.7\" (${IPHONE_67_W}x${IPHONE_67_H}) ..."
 for entry in "${PAGES[@]}"; do
   IFS='|' read -r path name <<< "$entry"
-  capture "$path" "$name" "$IPHONE_W" "$IPHONE_H" "iphone-6.7"
+  capture "$path" "$name" "$IPHONE_67_W" "$IPHONE_67_H" "iphone-6.7"
+done
+
+echo "Capturing iPhone 6.5\" (${IPHONE_65_W}x${IPHONE_65_H}) ..."
+for entry in "${PAGES[@]}"; do
+  IFS='|' read -r path name <<< "$entry"
+  capture "$path" "$name" "$IPHONE_65_W" "$IPHONE_65_H" "iphone-6.5"
 done
 
 echo "Capturing iPad 12.9\" (${IPAD_W}x${IPAD_H}) ..."
@@ -62,8 +70,9 @@ find "$OUT" -name '*.png' -exec ls -lh {} \;
 (
   cd "$OUT"
   zip -r ../stocknews-app-store-iphone-screenshots.zip iphone-6.7/*.png 2>/dev/null || true
+  zip -r ../stocknews-app-store-iphone-6.5-screenshots.zip iphone-6.5/*.png 2>/dev/null || true
   zip -r ../stocknews-app-store-ipad-screenshots.zip ipad-12.9/*.png 2>/dev/null || true
-  zip -r ../stocknews-app-store-screenshots-all.zip iphone-6.7 ipad-12.9 2>/dev/null || true
+  zip -r ../stocknews-app-store-screenshots-all.zip iphone-6.7 iphone-6.5 ipad-12.9 2>/dev/null || true
 )
 
 echo ""
