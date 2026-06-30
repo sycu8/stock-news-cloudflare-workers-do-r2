@@ -1,0 +1,78 @@
+SELF-CLASSIFICATION REPORT FOR ENCRYPTION PRODUCTS
+(Export Administration Regulations — Category 5, Part 2 exemption)
+
+================================================================================
+
+1. PRODUCT INFORMATION
+
+   Product name:        Stock News
+   Bundle identifier:   vn.orangecloud.stocknews
+   Platform:            iOS (iPhone / iPad)
+   Version:             1.0.1
+   Developer / Seller:  Cloudspace (Orange Cloud)
+   Contact email:       support@orangecloud.vn
+   Website:             https://stocknews.orangecloud.vn
+
+2. PRODUCT DESCRIPTION
+
+   Stock News is a mobile application that displays Vietnam stock market news
+   and reference information by loading the developer's website
+   (https://stocknews.orangecloud.vn) inside a native iOS shell (Capacitor
+   WebView). The app does not execute securities trades or store financial
+   account credentials.
+
+3. ENCRYPTION USE
+
+   The app uses encryption ONLY for the following exempt purposes:
+
+   [X] Confidentiality of data in transit (HTTPS / TLS)
+   [ ] Proprietary or non-standard encryption algorithms
+   [ ] Encryption implemented outside Apple's operating system APIs
+   [ ] End-to-end custom cryptography
+   [ ] VPN or tunneling beyond standard HTTPS
+
+   Technical details:
+   - All network communication uses HTTPS (TLS 1.2/1.3) via Apple's iOS
+     networking stack (URLSession / WKWebView / App Transport Security).
+   - No proprietary encryption algorithms are implemented.
+   - No encryption libraries beyond those provided by Apple iOS.
+   - Info.plist key ITSAppUsesNonExemptEncryption is set to NO (false).
+
+4. EXPORT CLASSIFICATION
+
+   This product qualifies for exemption under the U.S. Export Administration
+   Regulations (EAR), Category 5 Part 2, because it:
+
+   - Uses only standard encryption (TLS) for authentication and protection
+     of data in transit;
+   - Does not implement encryption beyond what is available in Apple's
+     operating system;
+   - Is publicly available as a mass-market mobile application;
+   - Is not designed for military, intelligence, or weapons use.
+
+   No CCATS, ERN, or French encryption declaration is required for this
+   product's stated use of encryption.
+
+5. DECLARATION
+
+   I declare that the information in this self-classification report is
+   accurate and complete to the best of my knowledge.
+
+   Authorized name:     _________________________________
+
+   Title:               _________________________________
+
+   Organization:        Cloudspace
+
+   Date:                _________________________________
+
+   Signature:           _________________________________
+
+================================================================================
+
+Upload this document (PDF preferred) to:
+App Store Connect → My Apps → Stock News → App Information
+→ App Encryption Documentation → Upload
+
+Also ensure Xcode Info.plist contains:
+  ITSAppUsesNonExemptEncryption = NO

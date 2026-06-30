@@ -75,4 +75,12 @@ Stock News uses **only** TLS through the WebView — **no documentation needed**
 3. Ensure latest code on Mac (`git pull`) before Archive  
 4. Do **not** upload random PDFs — fix answers + new build instead  
 
-Support: https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations
+Upload this document to App Store Connect:
+
+1. Download PDF: https://stocknews.orangecloud.vn/assets/releases/stocknews-export-compliance.pdf
+2. Sign (name, date, organization: Cloudspace)
+3. App Store Connect → My Apps → Stock News → **App Information**
+4. **App Encryption Documentation** → Upload signed PDF
+5. Re-archive in Xcode with ITSAppUsesNonExemptEncryption = NO → upload build (3+)
+
+See mobile/store/EXPORT_COMPLIANCE.md

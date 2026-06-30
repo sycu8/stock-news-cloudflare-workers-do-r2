@@ -56,7 +56,19 @@ const IPAD_SHOTS = [
   { label: "05-notify.png", href: `${BASE}/app-store-screenshots/ipad-12.9/05-notify.png`, desc: "Cài đặt thông báo" }
 ];
 
+const ENCRYPTION_DOC: DownloadItem = {
+  label: "App Encryption Documentation (PDF)",
+  href: `${BASE}/stocknews-export-compliance.pdf`,
+  desc: "Self-classification — HTTPS/TLS only. Upload to App Store Connect before submitting build.",
+  primary: true
+};
+
 const OTHER_DOWNLOADS: DownloadItem[] = [
+  {
+    label: "Encryption doc (TXT)",
+    href: `${BASE}/stocknews-export-compliance.txt`,
+    desc: "Same letter as plain text"
+  },
   {
     label: "Tất cả screenshot App Store (ZIP)",
     href: `${BASE}/stocknews-app-store-screenshots-all.zip`,
@@ -150,7 +162,16 @@ export function renderReleasesPage(appearance: Appearance): string {
     <h1>Tải xuống cho App Store &amp; Google Play</h1>
     <p class="lead">Screenshot iPhone/iPad và file Android đã tạo sẵn — bấm để tải, không cần đăng nhập.</p>
 
-    <h2>App Store — khuyến nghị</h2>
+    <h2>App Encryption Documentation (Apple yêu cầu)</h2>
+    <div class="cards">${downloadCard(ENCRYPTION_DOC)}</div>
+    <ol class="steps">
+      <li>Tải PDF ở trên → ký tên + ngày (hoặc in → ký → scan PDF)</li>
+      <li>App Store Connect → <strong>My Apps → Stock News → App Information</strong></li>
+      <li>Cuộn xuống <strong>App Encryption Documentation</strong> → Upload PDF</li>
+      <li>Đồng thời trong Xcode: <strong>App Uses Non-Exempt Encryption = NO</strong> → Archive build mới</li>
+    </ol>
+
+    <h2>App Store — screenshots</h2>
     <div class="cards">${downloadCard(IPHONE_65_KIT)}${downloadCard(APP_STORE_KIT)}</div>
     <ol class="steps">
       <li>Tải <strong>iPhone 6.5\" ZIP</strong> nếu App Store yêu cầu khung 6.5\"</li>
