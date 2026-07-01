@@ -195,12 +195,13 @@ function getCookieValue(c: Context<{ Bindings: Env }> | any, name: string): stri
 }
 
 function getAdminToken(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): string | null {
-  // Prefer cookie-based login to avoid leaking token in URL query params.
   const fromCookie = getCookieValue(c as any, ADMIN_COOKIE_NAME);
   if (fromCookie) return fromCookie;
   const fromHeader = c.req.header("x-admin-token");
   if (fromHeader) return fromHeader;
-  return c.env.ALLOW_ADMIN_QUERY_TOKEN === "true" ? c.req.query("token") ?? null : null;
+  // Query-string tokens are disabled by default (leak via logs/referrers). Opt-in only for legacy scripts.
+  if (c.env.ALLOW_ADMIN_QUERY_TOKEN !== "true") return null;
+  return c.req.query("token") ?? null;
 }
 
 function isAdminAuthorized(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): boolean {

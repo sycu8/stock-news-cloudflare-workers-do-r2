@@ -194,7 +194,15 @@ export const PUBLIC_API_CATALOG_ENTRIES: ApiCatalogEntry[] = [
   { apiPath: "/sitemap.xml", docSlug: "sitemap-xml", title: "XML sitemap" },
   { apiPath: "/robots.txt", docSlug: "robots-txt", title: "robots.txt" },
   { apiPath: "/health", docSlug: "health", title: "Liveness probe (JSON)" },
-  { apiPath: "/api/intel/daily", docSlug: "api-intel-daily", title: "Investor desk daily snapshot JSON (R2)" }
+  { apiPath: "/api/intel/daily", docSlug: "api-intel-daily", title: "Investor desk daily snapshot JSON (R2)" },
+  { apiPath: "/api/watchlist", docSlug: "api-watchlist", title: "Anonymous watchlist (JSON); GET read, POST save" },
+  { apiPath: "/api/watchlist/export", docSlug: "api-watchlist-export", title: "Watchlist CSV export" },
+  { apiPath: "/api/live/poll", docSlug: "api-live-poll", title: "Live feed poll JSON (homepage or portfolio filter)" },
+  { apiPath: "/api/search/ai", docSlug: "api-search-ai", title: "AI Search over indexed news (JSON)" },
+  { apiPath: "/desk", docSlug: "desk-html", title: "Investor Desk hub (HTML)" },
+  { apiPath: "/briefing", docSlug: "briefing-html", title: "Morning briefing with cached AI summary (HTML)" },
+  { apiPath: "/portfolio", docSlug: "portfolio-html", title: "Watchlist portfolio page (HTML)" },
+  { apiPath: "/intel", docSlug: "intel-html", title: "Intel archive + multi-source clusters (HTML)" }
 ];
 
 export function buildOpenApiDocument(origin: string): Record<string, unknown> {
@@ -265,7 +273,54 @@ export function buildOpenApiDocument(origin: string): Record<string, unknown> {
           summary: "Investor desk snapshot (Fear/Greed, sectors, smart-money proxy)",
           parameters: [{ name: "date", in: "query", required: true, schema: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" } }]
         }
-      }
+      },
+      "/api/watchlist": {
+        get: { summary: "Read anonymous watchlist (cookie or KV-backed sn_watch_id)" },
+        post: {
+          summary: "Save watchlist symbols to KV; sets vnwatch cookie",
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    symbols: { type: "array", items: { type: "string" } },
+                    name: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/watchlist/export": {
+        get: {
+          summary: "Export watchlist as CSV",
+          parameters: [{ name: "symbols", in: "query", schema: { type: "string" }, description: "Optional comma list; defaults to cookie" }]
+        }
+      },
+      "/api/live/poll": {
+        get: {
+          summary: "Poll for new articles since cursor",
+          parameters: [
+            { name: "since", in: "query", schema: { type: "string" }, description: "ISO timestamp cursor" },
+            { name: "portfolio", in: "query", schema: { type: "string", enum: ["1", "true"] }, description: "Filter to vnwatch symbols" }
+          ]
+        }
+      },
+      "/api/search/ai": {
+        get: {
+          summary: "Semantic search over news index",
+          parameters: [
+            { name: "q", in: "query", required: true, schema: { type: "string" } },
+            { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 20 } }
+          ]
+        }
+      },
+      "/desk": { get: { summary: "Investor Desk hub (HTML)" } },
+      "/briefing": { get: { summary: "Morning briefing page with cached AI executive summary (HTML)" } },
+      "/portfolio": { get: { summary: "Watchlist portfolio page (HTML)" } },
+      "/intel": { get: { summary: "Intel archive and multi-source news clusters (HTML)" } }
     }
   };
 }
@@ -317,6 +372,14 @@ export function renderApiDocsHtml(origin: string): string {
   ${section("robots-txt", "GET /robots.txt", `<p><a href="${o}/robots.txt">Try</a></p>`)}
   ${section("health", "GET /health", `<p><a href="${o}/health">Try</a> — Liveness JSON for all services above.</p>`)}
   ${section("api-intel-daily", "GET /api/intel/daily", `<p>Query <code>date</code> = <code>YYYY-MM-DD</code> (Vietnam report day). Returns JSON snapshot from R2 when available (written each refresh).</p>`)}
+  ${section("api-watchlist", "GET/POST /api/watchlist", `<p>Anonymous watchlist (max 18 symbols). Uses <code>sn_watch_id</code> cookie + KV. POST body: <code>{"symbols":["VNM","FPT"],"name":"optional"}</code></p>`)}
+  ${section("api-watchlist-export", "GET /api/watchlist/export", `<p>CSV download. Query <code>symbols</code> optional (comma-separated).</p>`)}
+  ${section("api-live-poll", "GET /api/live/poll", `<p>Query <code>since</code> (ISO cursor), <code>portfolio=1</code> to filter by watchlist cookie.</p>`)}
+  ${section("api-search-ai", "GET /api/search/ai", `<p>Query <code>q</code> (required), <code>limit</code> (1–20).</p>`)}
+  ${section("desk-html", "GET /desk", `<p><a href="${o}/desk">Investor Desk</a> — hub HTML.</p>`)}
+  ${section("briefing-html", "GET /briefing", `<p><a href="${o}/briefing">Morning briefing</a> — AI summary cached daily.</p>`)}
+  ${section("portfolio-html", "GET /portfolio", `<p><a href="${o}/portfolio">Watchlist</a> — portfolio HTML; POST import at <code>/portfolio/import</code>.</p>`)}
+  ${section("intel-html", "GET /intel", `<p><a href="${o}/intel">Intel</a> — archive dates + multi-source clusters.</p>`)}
   <p style="margin-top:2rem"><a href="${o}/">← Trang chủ</a></p>
 </body>
 </html>`;
