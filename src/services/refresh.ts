@@ -8,7 +8,6 @@ import {
   listLatestFeedHealth,
   insertSystemStatusSnapshot,
   setArticleSummary,
-  setArticleImageUrl,
   upsertArticle,
   upsertDailyReport
 } from "../db";
@@ -28,10 +27,9 @@ import { loadDailyMedia, refreshDailyMedia } from "./daily-media";
 import { fetchAllSourcesFromDb } from "./fetch-news";
 import { summarizeArticle, summarizeArticleFromSource, summarizeDailyOverview } from "./summarizer";
 import { fetchAndExtractSource } from "./source-extract";
-import { ensureGeneratedThumbnail } from "./image-gen";
+import { persistArticleImageFromSource } from "./article-image";
 import { analyzeSentimentForArticles } from "./sentiment";
 import { collapseDuplicateNews } from "./news-cluster";
-import { ensureOptimizedImageAsset } from "./image-cache";
 import { notifySubscribersOfNewArticles } from "./telegram-bot";
 import { generateMorningBriefIfNeeded } from "./morning-brief";
 import { getFxMarketSnapshot, getGoldMarketSnapshot } from "./market-extra";
@@ -71,34 +69,22 @@ interface TodayFeedResponse {
 
 async function runLimitedArticleEnrichment(env: Env, reportDate: string): Promise<void> {
   const toEnrich = await listArticlesNeedingEnrichment(env.DB, reportDate, 80);
-  let generatedReservations = 0;
   await mapWithConcurrency(toEnrich, ENRICH_CONCURRENCY, async (article) => {
-    const extracted = await fetchAndExtractSource(article.url);
-    if (extracted?.imageUrl && (!article.imageUrl || article.imageUrl.trim().length === 0)) {
-      const optimized =
-        (await ensureOptimizedImageAsset({
-          env,
-          sourceUrl: extracted.imageUrl,
-          namespace: "article-thumb"
-        })) ?? extracted.imageUrl;
-      await setArticleImageUrl(env.DB, article.id, optimized);
-    }
-    if (
-      (!article.imageUrl || article.imageUrl.trim().length === 0) &&
-      !extracted?.imageUrl &&
-      generatedReservations < 24
-    ) {
-      generatedReservations += 1;
-      const gen = await ensureGeneratedThumbnail({
+    const needsImage =
+      !article.imageUrl ||
+      article.imageUrl.trim().length === 0 ||
+      /imagedelivery\.net\//i.test(article.imageUrl);
+
+    if (needsImage) {
+      await persistArticleImageFromSource({
         env,
-        reportDate,
+        articleId: article.id,
         articleUrl: article.url,
-        title: article.title
+        currentImageUrl: article.imageUrl
       });
-      if (gen) {
-        await setArticleImageUrl(env.DB, article.id, gen.publicPath);
-      }
     }
+
+    const extracted = await fetchAndExtractSource(article.url);
     if ((!article.summaryVi || article.summaryVi.trim().length === 0) && extracted?.text) {
       const summary = await summarizeArticleFromSource(article, extracted.text, env);
       await setArticleSummary(env.DB, article.id, summary);

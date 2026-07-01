@@ -413,7 +413,11 @@ export async function listArticlesNeedingEnrichment(
       `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
        FROM articles
        WHERE published_at BETWEEN ?1 AND ?2
-         AND (summary_vi IS NULL OR summary_vi = '' OR image_url IS NULL OR image_url = '')
+         AND (
+           summary_vi IS NULL OR summary_vi = ''
+           OR image_url IS NULL OR image_url = ''
+           OR image_url LIKE '%imagedelivery.net/%'
+         )
        ORDER BY published_at DESC
        LIMIT ?3`
     )

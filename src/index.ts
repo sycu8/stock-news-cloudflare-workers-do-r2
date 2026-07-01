@@ -847,7 +847,7 @@ app.get("/img", async (c) => {
 
     const contentType = resp.headers.get("content-type") ?? "application/octet-stream";
     if (!resp.ok || !contentType.toLowerCase().startsWith("image/")) {
-      return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
+      return c.text("Image unavailable", 404);
     }
     const out = new Response(resp.body, {
       status: resp.status,
@@ -861,7 +861,7 @@ app.get("/img", async (c) => {
     c.executionCtx.waitUntil(cache.put(cacheKey, out.clone()));
     return out;
   } catch {
-    return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
+    return c.text("Image unavailable", 404);
   }
 });
 

@@ -9,6 +9,7 @@ import type {
   StoredArticle
 } from "../types";
 import { LOGO_URL } from "./brand";
+import { resolveStoredArticleImageUrl } from "../services/article-image";
 import { formatVietnamDateDisplay, formatVietnamDateTimeDisplay, formatVietnamTimeDisplay } from "../utils/date";
 import { classifySentimentText } from "../services/sentiment";
 import { hotScore } from "../services/article-heat";
@@ -1692,8 +1693,9 @@ function renderOptionalCardThumb(
   title: string,
   opts: { loading: "eager" | "lazy"; fetchpriority: "high" | "auto" }
 ): string {
-  if (!imageUrl?.trim()) return "";
-  return renderResponsiveImage(imageUrl, "cardThumb", title, {
+  const resolved = resolveStoredArticleImageUrl(imageUrl);
+  if (!resolved) return "";
+  return renderResponsiveImage(resolved, "cardThumb", title, {
     width: 1200,
     height: 675,
     loading: opts.loading,
@@ -1715,10 +1717,11 @@ function renderResponsiveImage(
 }
 
 function buildCloudflareSrcset(src: string): string {
-  /** Remote HTTPS images: optimize via Workers /img + Cloudflare image transforms on fetch. Same-origin paths: no responsive srcset (avoid invalid /cdn-cgi paths). */
-  if (!/^https?:\/\//i.test(src)) return "";
+  /** Remote HTTPS images: optimize via Workers /img. Same-origin /assets paths skip srcset. */
+  const resolved = resolveStoredArticleImageUrl(src) ?? src;
+  if (!/^https?:\/\//i.test(resolved)) return "";
   const widths = [240, 480, 768, 1024];
-  return widths.map((w) => `/img?${imgProxyQuery(src, { w, q: 76 })} ${w}w`).join(", ");
+  return widths.map((w) => `/img?${imgProxyQuery(resolved, { w, q: 76 })} ${w}w`).join(", ");
 }
 
 function imgProxyQuery(u: string, opts: { w: number; q: number }): string {
@@ -1730,8 +1733,9 @@ function imgProxyQuery(u: string, opts: { w: number; q: number }): string {
 }
 
 function proxiedImageUrl(src: string): string {
-  if (!/^https?:\/\//i.test(src)) return src;
-  return `/img?${imgProxyQuery(src, { w: 640, q: 76 })}`;
+  const resolved = resolveStoredArticleImageUrl(src) ?? src;
+  if (!/^https?:\/\//i.test(resolved)) return resolved;
+  return `/img?${imgProxyQuery(resolved, { w: 640, q: 76 })}`;
 }
 
 function isInternationalSource(item: MediaItemRecord): boolean {
@@ -2049,7 +2053,7 @@ export function renderArticleDetailPage(params: {
       <h1>${escapeHtml(p.title)}</h1>
       <p class="meta">${escapeHtml(p.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(p.publishedAt))}</p>
       ${renderSentimentBadge(p.sentimentLabel)}
-      ${p.imageUrl?.trim() ? renderResponsiveImage(p.imageUrl, "thumb", p.title, {
+      ${resolveStoredArticleImageUrl(p.imageUrl) ? renderResponsiveImage(resolveStoredArticleImageUrl(p.imageUrl)!, "thumb", p.title, {
         width: 1200,
         height: 675,
         loading: "eager",

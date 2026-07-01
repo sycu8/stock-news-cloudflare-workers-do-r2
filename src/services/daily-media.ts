@@ -5,9 +5,9 @@ import type { Env, MediaItemRecord, NormalizedArticle, StoredArticle } from "../
 import { formatCalendarDateVietnam, toIsoOrNow } from "../utils/date";
 import { stripHtml, truncate } from "../utils/text";
 import { fetchAndExtractSource } from "./source-extract";
-import { ensureGeneratedThumbnail } from "./image-gen";
 import { ensureOptimizedImageAsset } from "./image-cache";
 import { pickRssItemImage } from "./rss-image";
+import { isBrokenHostedImageUrl, persistArticleImageFromSource } from "./article-image";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -45,10 +45,10 @@ export async function refreshDailyMedia(env: Env, reportDate: string, articles: 
   const dedicatedBriefs = collected.filter((item) => item.sourceId.startsWith("vietstock-brief-"));
   const finalItems = dedicatedBriefs.length >= 4 ? collected : [...collected, ...derivedBriefs];
 
-  // Enrich images for brief/media cards from source page or generated image.
-  let generatedCount = 0;
+  // Enrich images for brief/media cards by crawling the source article page.
   for (const item of finalItems) {
-    if (!item.imageUrl) {
+    const needsImage = !item.imageUrl || isBrokenHostedImageUrl(item.imageUrl);
+    if (needsImage) {
       const extracted = await fetchAndExtractSource(item.url);
       if (extracted?.imageUrl) {
         item.imageUrl =
@@ -57,30 +57,51 @@ export async function refreshDailyMedia(env: Env, reportDate: string, articles: 
             sourceUrl: extracted.imageUrl,
             namespace: "media-thumb"
           })) ?? extracted.imageUrl;
-      } else if (generatedCount < 4) {
-        const gen = await ensureGeneratedThumbnail({
-          env,
-          reportDate,
-          articleUrl: item.url,
-          title: item.title
-        });
-        if (gen) {
-          item.imageUrl = gen.publicPath;
-          generatedCount += 1;
-        }
       }
-    } else if (/^https?:\/\//i.test(item.imageUrl)) {
-      item.imageUrl =
-        (await ensureOptimizedImageAsset({
-          env,
-          sourceUrl: item.imageUrl,
-          namespace: "media-thumb"
-        })) ?? item.imageUrl;
+    } else {
+      const existingUrl = item.imageUrl;
+      if (existingUrl && /^https?:\/\//i.test(existingUrl) && !existingUrl.startsWith("/assets/")) {
+        item.imageUrl =
+          (await ensureOptimizedImageAsset({
+            env,
+            sourceUrl: existingUrl,
+            namespace: "media-thumb"
+          })) ?? existingUrl;
+      }
     }
     await upsertMediaItem(env.DB, item);
   }
 
   await syncVietstockMediaItemsIntoArticles(env.DB, finalItems);
+  await syncMediaImagesIntoArticles(env, finalItems);
+}
+
+/** Copy crawled media thumbnails onto matching rows in articles (e.g. CNBC RSS → article card). */
+export async function syncMediaImagesIntoArticles(env: Env, items: MediaItemRecord[]): Promise<number> {
+  let updated = 0;
+  for (const item of items) {
+    const saved = await getArticleByUrl(env.DB, item.url);
+    if (!saved) continue;
+    const needsImage =
+      !saved.imageUrl || saved.imageUrl.trim().length === 0 || isBrokenHostedImageUrl(saved.imageUrl);
+    if (!needsImage) continue;
+
+    if (item.imageUrl?.trim() && !isBrokenHostedImageUrl(item.imageUrl)) {
+      await setArticleImageUrl(env.DB, saved.id, item.imageUrl.trim());
+      updated += 1;
+      continue;
+    }
+
+    const crawled = await persistArticleImageFromSource({
+      env,
+      articleId: saved.id,
+      articleUrl: saved.url,
+      currentImageUrl: saved.imageUrl,
+      namespace: "article-thumb"
+    });
+    if (crawled) updated += 1;
+  }
+  return updated;
 }
 
 /** Đưa tin từ RSS media (URL gốc .vn) vào bảng articles để có trang /tin/... và AI phân tích giống bài RSS chính. */
