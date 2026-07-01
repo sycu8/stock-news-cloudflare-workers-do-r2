@@ -7,6 +7,7 @@ import { stripHtml, truncate } from "../utils/text";
 import { fetchAndExtractSource } from "./source-extract";
 import { ensureGeneratedThumbnail } from "./image-gen";
 import { ensureOptimizedImageAsset } from "./image-cache";
+import { pickRssItemImage } from "./rss-image";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -186,7 +187,7 @@ function normalizeMediaItem(
     publishedAt: toIsoOrNow(item.pubDate ?? item.published),
     reportDate,
     summaryVi: summary,
-    imageUrl: pickImage(item, item.description ?? item.summary ?? "")
+    imageUrl: pickRssItemImage(item, item.description ?? item.summary ?? "")
   };
 }
 
@@ -194,13 +195,4 @@ function pickLink(item: FeedItem): string {
   if (typeof item.link === "string") return item.link.trim();
   if (typeof item.link === "object" && item.link?.["@_href"]) return item.link["@_href"].trim();
   return "";
-}
-
-function pickImage(item: FeedItem, description: string): string | null {
-  const mediaThumb = Array.isArray(item["media:thumbnail"]) ? item["media:thumbnail"][0] : item["media:thumbnail"];
-  const fromMedia = mediaThumb?.["@_url"] ?? item.thumbnail?.["@_url"];
-  if (fromMedia) return fromMedia;
-
-  const imgMatch = description.match(/<img[^>]+src=["']([^"']+)["']/i);
-  return imgMatch?.[1] ?? null;
 }

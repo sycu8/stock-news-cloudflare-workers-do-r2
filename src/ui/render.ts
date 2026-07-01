@@ -131,12 +131,9 @@ export function renderHomePage({
             ${impactPill(article)}
             <p class="meta">${escapeHtml(article.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(article.publishedAt))}</p>
           </div>
-          ${renderResponsiveImage(article.imageUrl || LOGO_URL, "cardThumb", article.title, {
-            width: 1200,
-            height: 675,
+          ${renderOptionalCardThumb(article.imageUrl, article.title, {
             loading: idx === 0 ? "eager" : "lazy",
-            fetchpriority: idx === 0 ? "high" : "auto",
-            sizes: "(max-width: 768px) 100vw, 33vw"
+            fetchpriority: idx === 0 ? "high" : "auto"
           })}
           <h3><a href="${escapeAttribute(homeStoredArticleHref(article))}">${escapeHtml(article.title)}</a></h3>
           ${renderSentimentBadge((article as StoredArticle & { sentimentLabel?: string }).sentimentLabel ?? classifySentimentText(`${article.title} ${article.summaryVi ?? ""} ${article.snippet}`).label)}
@@ -163,12 +160,9 @@ export function renderHomePage({
         <article class="card">
           <div class="cardImpactRow">${impactPill(article)}</div>
           <p class="meta">${escapeHtml(article.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(article.publishedAt))}</p>
-          ${renderResponsiveImage(article.imageUrl || LOGO_URL, "cardThumb", article.title, {
-            width: 1200,
-            height: 675,
+          ${renderOptionalCardThumb(article.imageUrl, article.title, {
             loading: idx === 0 && pinnedArticles.length === 0 ? "eager" : "lazy",
-            fetchpriority: idx === 0 && pinnedArticles.length === 0 ? "high" : "auto",
-            sizes: "(max-width: 768px) 100vw, 33vw"
+            fetchpriority: idx === 0 && pinnedArticles.length === 0 ? "high" : "auto"
           })}
           <h3><a href="${escapeAttribute(homeStoredArticleHref(article))}">${escapeHtml(article.title)}</a></h3>
           ${renderSentimentBadge((article as StoredArticle & { sentimentLabel?: string }).sentimentLabel ?? classifySentimentText(`${article.title} ${article.summaryVi ?? ""} ${article.snippet}`).label)}
@@ -1021,7 +1015,7 @@ export function renderHomePage({
               ${
                 latestMarketVisual
                   ? `<div class="marketMini" style="margin-top:10px;">
-                      ${renderResponsiveImage(latestMarketVisual.imageUrl || LOGO_URL, "", latestMarketVisual.title, {
+                      ${renderResponsiveImage(latestMarketVisual.imageUrl!, "", latestMarketVisual.title, {
                         width: 320,
                         height: 180,
                         loading: "lazy",
@@ -1693,6 +1687,21 @@ function parseVietnamPrice(input: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function renderOptionalCardThumb(
+  imageUrl: string | null | undefined,
+  title: string,
+  opts: { loading: "eager" | "lazy"; fetchpriority: "high" | "auto" }
+): string {
+  if (!imageUrl?.trim()) return "";
+  return renderResponsiveImage(imageUrl, "cardThumb", title, {
+    width: 1200,
+    height: 675,
+    loading: opts.loading,
+    fetchpriority: opts.fetchpriority,
+    sizes: "(max-width: 768px) 100vw, 33vw"
+  });
+}
+
 function renderResponsiveImage(
   src: string,
   className: string,
@@ -1702,8 +1711,7 @@ function renderResponsiveImage(
   const srcset = buildCloudflareSrcset(src);
   const srcsetAttr = srcset ? ` srcset="${escapeAttribute(srcset)}"` : "";
   const source = proxiedImageUrl(src);
-  const fallback = escapeAttribute(proxiedImageUrl(LOGO_URL));
-  return `<img class="${className}" src="${escapeAttribute(source)}" alt="${escapeAttribute(alt)}" width="${opts.width}" height="${opts.height}" loading="${opts.loading}" fetchpriority="${opts.fetchpriority}" decoding="async"${srcsetAttr} sizes="${escapeAttribute(opts.sizes)}" onerror="this.onerror=null;this.src='${fallback}';" />`;
+  return `<img class="${className}" src="${escapeAttribute(source)}" alt="${escapeAttribute(alt)}" width="${opts.width}" height="${opts.height}" loading="${opts.loading}" fetchpriority="${opts.fetchpriority}" decoding="async"${srcsetAttr} sizes="${escapeAttribute(opts.sizes)}" onerror="this.onerror=null;this.style.display='none';" />`;
 }
 
 function buildCloudflareSrcset(src: string): string {
@@ -2041,13 +2049,13 @@ export function renderArticleDetailPage(params: {
       <h1>${escapeHtml(p.title)}</h1>
       <p class="meta">${escapeHtml(p.sourceName)} • ${escapeHtml(formatVietnamDateDisplay(p.publishedAt))}</p>
       ${renderSentimentBadge(p.sentimentLabel)}
-      ${renderResponsiveImage(p.imageUrl || LOGO_URL, "thumb", p.title, {
+      ${p.imageUrl?.trim() ? renderResponsiveImage(p.imageUrl, "thumb", p.title, {
         width: 1200,
         height: 675,
         loading: "eager",
         fetchpriority: "high",
         sizes: "(max-width: 900px) 100vw, 900px"
-      })}
+      }) : ""}
       <p><strong>Tóm tắt:</strong> ${escapeHtml(p.summaryVi)}</p>
       <p><strong>Nội dung trích:</strong> ${escapeHtml(p.snippet)}</p>
       ${aiAnalysisHtml}
