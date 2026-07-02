@@ -1,0 +1,36 @@
+=== GOOGLE PLAY — COPY/PASTE FIELDS ===
+
+APP NAME (30 chars max):
+Stock News — Tin CK VN
+
+SHORT DESCRIPTION (80 chars max):
+Tin chứng khoán VN, watchlist, bản tin sáng và bảng thị trường mỗi ngày.
+
+FULL DESCRIPTION:
+Stock News by Orange Cloud — terminal tin tức chứng khoán Việt Nam cập nhật mỗi 5 phút.
+
+Tính năng:
+• Tổng hợp tin từ nguồn RSS/HTML uy tín (Vietstock, CafeF, HSX, …)
+• Lọc theo ngày, nguồn, từ khóa, sentiment
+• Watchlist cá nhân (tối đa 18 mã)
+• Investor Desk: Fear/Greed, sector rotation, bản tin sáng AI
+• Biểu đồ VN-Index, tỷ giá, vàng tham khảo
+• Thông báo qua Telegram (tùy chọn)
+
+Lưu ý: Nội dung chỉ mang tính tham khảo, không phải khuyến nghị mua/bán/giữ chứng khoán. Dữ liệu thị trường có thể trễ hoặc sai lệch.
+
+Chính sách quyền riêng tư: https://stocknews.orangecloud.vn/privacy
+Điều khoản: https://stocknews.orangecloud.vn/terms
+Liên hệ: support@orangecloud.vn
+
+CATEGORY:
+News & Magazines
+
+PRIVACY POLICY URL:
+https://stocknews.orangecloud.vn/privacy
+
+CONTACT EMAIL:
+support@orangecloud.vn
+
+WEBSITE:
+https://stocknews.orangecloud.vn
