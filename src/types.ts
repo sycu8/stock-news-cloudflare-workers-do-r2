@@ -53,6 +53,8 @@ export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   /** Bot username without @; public, for https://t.me/<name> links */
   TELEGRAM_BOT_USERNAME?: string;
+  /** Apple Developer Team ID (10 chars) for Universal Links AASA — set after Cloudspace enrollment. */
+  APPLE_TEAM_ID?: string;
   /** Must match Telegram setWebhook secret_token; header X-Telegram-Bot-Api-Secret-Token */
   TELEGRAM_WEBHOOK_SECRET?: string;
   /** Cloudflare Images account hash for imagedelivery.net URLs */
