@@ -98,6 +98,9 @@ import {
   type Appearance,
 } from "./ui/theme";
 import { buildCanonicalUrl } from "./ui/seo";
+import { buildWebManifest, renderPrivacyPolicyPage, renderTermsPage } from "./ui/legal";
+import { renderReleasesPage } from "./ui/releases";
+import { buildAppleAppSiteAssociation, buildAssetLinksJson } from "./ui/mobile-deep-links";
 import { hotScore } from "./services/article-heat";
 import {
   buildDailyInvestorSnapshot,
@@ -816,6 +819,8 @@ app.get("/assets/*", async (c) => {
     if (key.endsWith(".png")) headers.set("content-type", "image/png");
     else if (key.endsWith(".jpg") || key.endsWith(".jpeg")) headers.set("content-type", "image/jpeg");
     else if (key.endsWith(".webp")) headers.set("content-type", "image/webp");
+    else if (key.endsWith(".aab")) headers.set("content-type", "application/vnd.android.package-archive");
+    else if (key.endsWith(".zip")) headers.set("content-type", "application/zip");
     else headers.set("content-type", "application/octet-stream");
   }
   return new Response(obj.body, { headers });
@@ -1184,6 +1189,49 @@ app.get("/robots.txt", (c) => {
   return c.text(buildRobotsTxt(origin), 200, {
     "content-type": "text/plain; charset=utf-8",
     "cache-control": "public, s-maxage=3600, stale-while-revalidate=86400"
+  });
+});
+
+app.get("/privacy", (c) => {
+  return c.html(renderPrivacyPolicyPage(readAppearance(c)), 200, {
+    "cache-control": htmlCacheControl(),
+    "content-language": "vi"
+  });
+});
+
+app.get("/terms", (c) => {
+  return c.html(renderTermsPage(readAppearance(c)), 200, {
+    "cache-control": htmlCacheControl(),
+    "content-language": "vi"
+  });
+});
+
+app.get("/releases", (c) => {
+  return c.html(renderReleasesPage(readAppearance(c)), 200, {
+    "cache-control": "public, s-maxage=300, stale-while-revalidate=3600",
+    "content-language": "vi"
+  });
+});
+
+app.get("/manifest.webmanifest", (c) => {
+  const origin = new URL(c.req.url).origin;
+  const body = JSON.stringify(buildWebManifest({ origin }));
+  return c.body(body, 200, {
+    "content-type": "application/manifest+json; charset=utf-8",
+    "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800"
+  });
+});
+
+app.get("/.well-known/assetlinks.json", (c) => {
+  return c.json(buildAssetLinksJson(), 200, {
+    "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800"
+  });
+});
+
+app.get("/.well-known/apple-app-site-association", (c) => {
+  return c.json(buildAppleAppSiteAssociation(c.env.APPLE_TEAM_ID), 200, {
+    "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800",
+    "content-type": "application/json"
   });
 });
 

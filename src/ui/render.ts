@@ -19,6 +19,7 @@ import { themeAppearanceSwitcher, themeFontLinks, themeSemanticVariablesBlock, t
 import { LIVE_FEED_BAR_STYLES, renderLiveFeedBarHtml, renderLivePollScript, computeLivePollAnchor } from "./live-strip";
 import { getTodayDateKey } from "../db";
 import { buildHomeJsonLd, buildMarketingAttributionCookieScript } from "./seo";
+import { mobileWebAppMetaBlock } from "./legal";
 import type { ArticleImpactStock } from "../services/article-impact";
 import { cleanAiAnalysisForDisplay, hasUsefulAiAnalysis, parseAiAnalysisSections, shareCtaLabel } from "../services/article-detail-ui";
 import { buildArticleDetailHrefFromPublished } from "../services/article-routing";
@@ -440,6 +441,7 @@ export function renderHomePage({
     <meta name="description" content="${metaDescription}" />
     <link rel="icon" type="image/png" href="${LOGO_URL}" />
     <link rel="apple-touch-icon" href="${LOGO_URL}" />
+    ${mobileWebAppMetaBlock()}
     ${canonical}
     <meta property="og:title" content="Tin thị trường chứng khoán Việt Nam" />
     <meta property="og:description" content="${metaDescription}" />
@@ -804,6 +806,8 @@ export function renderHomePage({
       .footerBrand { display:flex; align-items:center; gap:12px; }
       .footerLogo { width:52px; height:52px; border-radius: 12px; object-fit: cover; background:#fff; padding: 4px; }
       .footer p { margin: 0; color: rgba(255,255,255,.88); }
+      .footerLegal { display:flex; flex-wrap:wrap; gap:12px; font-size:.88rem; }
+      .footerLegal a { color: rgba(255,255,255,.92); text-decoration: underline; text-underline-offset: 3px; }
       @media (max-width: 640px) {
         .header { padding: 14px; }
         .header h1 { font-size: 1.05rem; line-height: 1.25; margin-bottom: 6px; }
@@ -1183,6 +1187,11 @@ export function renderHomePage({
           </div>
         </div>
         <a class="topNavLink" href="#top">Lên đầu trang</a>
+        <nav class="footerLegal" aria-label="Legal">
+          <a href="/privacy">Quyền riêng tư</a>
+          <a href="/terms">Điều khoản</a>
+          <a href="/notify">Thông báo</a>
+        </nav>
       </footer>
     </main>
     <div class="themeCorner">${appearanceSwitcherHtml}</div>

@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Stock News</string>
+    <string name="title_activity_main">Stock News</string>
+    <string name="package_name">vn.orangecloud.stocknews</string>
+    <string name="custom_url_scheme">vn.orangecloud.stocknews</string>
+    <string name="privacy_policy_url">https://stocknews.orangecloud.vn/privacy</string>
+    <string name="terms_url">https://stocknews.orangecloud.vn/terms</string>
+    <string name="disclaimer">Nội dung chỉ mang tính tham khảo, không phải khuyến nghị đầu tư.</string>
+</resources>

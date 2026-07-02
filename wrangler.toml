@@ -54,6 +54,7 @@ OPENAI_MODEL = "gpt-5.5"
 TZ = "Asia/Ho_Chi_Minh"
 # Optional: Telegram bot @handle without @ (for /notify deep links). Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET.
 TELEGRAM_BOT_USERNAME = "stocknewsbyocbot"
+# After Apple Developer enrollment (Cloudspace org): wrangler secret put APPLE_TEAM_ID
 # Optional: when set, optimized images are uploaded to Cloudflare Images Hosted and served via imagedelivery.net.
 # Add CF_IMAGES_ACCOUNT_HASH in Cloudflare Worker vars/secrets to enable Hosted Images delivery URLs.
 CF_IMAGES_ACCOUNT_HASH = "N9GPD68IDHgBkqGwpbP3sNnv5LYKTKrH"
