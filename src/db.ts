@@ -87,10 +87,11 @@ interface SystemStatusSnapshotRow {
 }
 
 export async function upsertArticle(db: D1Database, article: NormalizedArticle): Promise<void> {
+  const imageUrl = article.imageUrl?.trim() || null;
   await db
     .prepare(
-      `INSERT INTO articles (source_id, source_name, title, url, published_at, snippet, content_limited)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+      `INSERT INTO articles (source_id, source_name, title, url, published_at, snippet, content_limited, image_url)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
        ON CONFLICT(url) DO UPDATE SET
          source_id = excluded.source_id,
          source_name = excluded.source_name,
@@ -98,6 +99,7 @@ export async function upsertArticle(db: D1Database, article: NormalizedArticle):
          published_at = excluded.published_at,
          snippet = excluded.snippet,
          content_limited = excluded.content_limited,
+         image_url = COALESCE(NULLIF(articles.image_url, ''), excluded.image_url),
          updated_at = datetime('now')`
     )
     .bind(
@@ -107,7 +109,8 @@ export async function upsertArticle(db: D1Database, article: NormalizedArticle):
       article.url,
       article.publishedAt,
       article.snippet,
-      article.contentLimited ? 1 : 0
+      article.contentLimited ? 1 : 0,
+      imageUrl
     )
     .run();
 }
@@ -410,7 +413,11 @@ export async function listArticlesNeedingEnrichment(
       `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
        FROM articles
        WHERE published_at BETWEEN ?1 AND ?2
-         AND (summary_vi IS NULL OR summary_vi = '' OR image_url IS NULL OR image_url = '')
+         AND (
+           summary_vi IS NULL OR summary_vi = ''
+           OR image_url IS NULL OR image_url = ''
+           OR image_url LIKE '%imagedelivery.net/%'
+         )
        ORDER BY published_at DESC
        LIMIT ?3`
     )

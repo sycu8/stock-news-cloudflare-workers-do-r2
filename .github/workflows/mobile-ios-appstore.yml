@@ -1,0 +1,140 @@
+# Build signed iOS IPA on macOS and upload to App Store Connect via API.
+#
+# Required GitHub secret:
+#   APPSTORE_API_PRIVATE_KEY   — full .p8 file contents (AuthKey_XJQWAM2B45.p8)
+#
+# Required GitHub variables (Settings → Secrets and variables → Actions → Variables):
+#   APPSTORE_ISSUER_ID         — UUID at top of App Store Connect → Integrations → API
+#   APPSTORE_API_KEY_ID        — XJQWAM2B45
+#   APPLE_TEAM_ID              — 10-char Team ID (Developer → Membership)
+#
+# Uses Xcode automatic signing + App Store Connect API (no .p12 required).
+# Manual run: Actions → mobile-ios-appstore → Run workflow
+
+name: mobile-ios-appstore
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_only:
+        description: "Skip build; upload existing IPA artifact"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+jobs:
+  build-ipa:
+    if: inputs.upload_only != 'true'
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Capacitor sync iOS
+        run: npx cap sync ios
+
+      - name: CocoaPods
+        run: |
+          cd ios/App
+          pod install
+
+      - name: Write App Store Connect API key
+        run: |
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s\n' "$APPSTORE_API_PRIVATE_KEY" > "$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+          chmod 600 "$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Archive and export IPA (automatic signing)
+        run: |
+          KEY_PATH="$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+          cd ios/App
+
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -archivePath "$RUNNER_TEMP/StockNews.xcarchive" archive \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APPSTORE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID" \
+            -authenticationKeyPath "$KEY_PATH" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            PRODUCT_BUNDLE_IDENTIFIER=vn.orangecloud.stocknews
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>uploadSymbols</key><true/>
+            <key>generateAppStoreInformation</key><true/>
+          </dict></plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/StockNews.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APPSTORE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID" \
+            -authenticationKeyPath "$KEY_PATH"
+
+          mkdir -p ../../dist
+          cp "$RUNNER_TEMP/export/App.ipa" ../../dist/StockNews.ipa
+          cp "$RUNNER_TEMP/export/AppStoreInfo.plist" ../../dist/AppStoreInfo.plist 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: |
+            mobile/dist/StockNews.ipa
+            mobile/dist/AppStoreInfo.plist
+          retention-days: 7
+          if-no-files-found: error
+
+  upload-appstore:
+    needs: [build-ipa]
+    if: always() && (needs.build-ipa.result == 'success' || inputs.upload_only == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download IPA artifact
+        if: inputs.upload_only != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-ipa
+          path: mobile/dist
+
+      - name: Verify IPA exists (upload-only mode)
+        if: inputs.upload_only == 'true'
+        run: test -f mobile/dist/StockNews.ipa
+
+      - name: Upload to App Store Connect (API)
+        uses: apple-actions/upload-testflight-build@v4
+        with:
+          app-path: mobile/dist/StockNews.ipa
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          uses-non-exempt-encryption: "false"
+          wait-for-processing: "true"
+          backend: AppStoreAPI
