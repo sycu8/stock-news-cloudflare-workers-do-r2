@@ -8,7 +8,7 @@
 #   APPSTORE_API_KEY_ID        — XJQWAM2B45
 #   APPLE_TEAM_ID              — 10-char Team ID (Developer → Membership)
 #
-# Uses Xcode automatic signing + App Store Connect API (no .p12 required).
+# Fastlane creates App ID + distribution cert + App Store profile when missing.
 # Manual run: Actions → mobile-ios-appstore → Run workflow
 
 name: mobile-ios-appstore
@@ -34,6 +34,7 @@ jobs:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      KEYCHAIN_PASSWORD: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,20 +63,20 @@ jobs:
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
-      - name: Download App Store provisioning profile
-        uses: apple-actions/download-provisioning-profiles@v4
-        id: profiles
-        with:
-          bundle-id: vn.orangecloud.stocknews
-          profile-type: IOS_APP_STORE
-          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
-          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      - name: Create App Store cert and provisioning profile
+        env:
+          APPSTORE_API_KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey_${{ vars.APPSTORE_API_KEY_ID }}.p8
+        run: |
+          sudo gem install fastlane --no-document
+          cd ios
+          fastlane ci_signing
 
-      - name: Archive and export IPA (automatic signing)
+      - name: Archive and export IPA
+        env:
+          APPSTORE_API_KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey_${{ vars.APPSTORE_API_KEY_ID }}.p8
         run: |
           set -euo pipefail
-          KEY_PATH="$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+          KEY_PATH="$APPSTORE_API_KEY_PATH"
           cd ios/App
 
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
