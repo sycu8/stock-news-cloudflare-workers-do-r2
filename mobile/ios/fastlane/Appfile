@@ -1,0 +1,2 @@
+app_identifier("vn.orangecloud.stocknews")
+team_id(ENV["APPLE_TEAM_ID"])
