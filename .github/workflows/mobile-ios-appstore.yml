@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
@@ -62,12 +62,24 @@ jobs:
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
+      - name: Download App Store provisioning profile
+        uses: apple-actions/download-provisioning-profiles@v4
+        id: profiles
+        with:
+          bundle-id: vn.orangecloud.stocknews
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
       - name: Archive and export IPA (automatic signing)
         run: |
+          set -euo pipefail
           KEY_PATH="$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
           cd ios/App
 
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/StockNews.xcarchive" archive \
             -allowProvisioningUpdates \
             -authenticationKeyID "$APPSTORE_API_KEY_ID" \
@@ -75,6 +87,7 @@ jobs:
             -authenticationKeyPath "$KEY_PATH" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             PRODUCT_BUNDLE_IDENTIFIER=vn.orangecloud.stocknews
 
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
