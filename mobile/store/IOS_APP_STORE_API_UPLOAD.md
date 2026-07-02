@@ -6,13 +6,12 @@ App ID: **`vn.orangecloud.stocknews`** · Version **1.0.1** · Build **3**
 
 1. **Apple Developer Program** enrolled (Cloudspace)
 2. **App Store Connect API key** ([Integrations → API](https://appstoreconnect.apple.com/access/integrations/api))
-   - Role: **App Manager** or **Admin**
-   - Download `AuthKey_XXXXXX.p8` (only once)
-   - Note **Issuer ID** and **Key ID**
-3. **Apple Distribution certificate** (.p12) for `vn.orangecloud.stocknews`
-   - CSR: `mobile/dist/apple-signing/stocknews-ios.certSigningRequest`
-   - Create cert in [Developer portal](https://developer.apple.com/account/resources/certificates/list)
+   - Key ID: **`XJQWAM2B45`** (`.p8` already provided — do not commit to git)
+   - Copy **Issuer ID** (UUID at top of the API Keys page)
+3. **Team ID** — 10 characters from [Developer → Membership](https://developer.apple.com/account)
 4. App created in App Store Connect (see `APP_STORE_CONNECT_WIZARD.md`)
+
+GitHub Actions uses **automatic signing** via the API key (no `.p12` required).
 
 ## GitHub Actions (recommended)
 
@@ -20,12 +19,12 @@ Add to repo **Settings → Secrets and variables → Actions**:
 
 | Type | Name | Value |
 |------|------|--------|
-| Secret | `APPSTORE_API_PRIVATE_KEY` | Full contents of `.p8` file |
-| Secret | `IOS_DISTRIBUTION_CERT_BASE64` | `base64 -i Certificates.p12` |
-| Secret | `IOS_DISTRIBUTION_CERT_PASSWORD` | P12 export password |
-| Variable | `APPSTORE_ISSUER_ID` | From API Keys page |
-| Variable | `APPSTORE_API_KEY_ID` | Key ID (10 chars) |
+| Secret | `APPSTORE_API_PRIVATE_KEY` | Full contents of `AuthKey_XJQWAM2B45.p8` |
+| Variable | `APPSTORE_ISSUER_ID` | Issuer ID from API Keys page |
+| Variable | `APPSTORE_API_KEY_ID` | `XJQWAM2B45` |
 | Variable | `APPLE_TEAM_ID` | Team ID (10 chars) |
+
+Repo admin must add these (the cloud agent cannot set GitHub secrets).
 
 Run: **Actions → mobile-ios-appstore → Run workflow**
 

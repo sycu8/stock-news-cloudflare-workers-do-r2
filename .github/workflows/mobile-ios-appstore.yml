@@ -1,15 +1,14 @@
 # Build signed iOS IPA on macOS and upload to App Store Connect via API.
 #
-# Required GitHub secrets:
-#   APPSTORE_API_PRIVATE_KEY   — full .p8 file contents
-#   IOS_DISTRIBUTION_CERT_BASE64 — base64 of Apple Distribution .p12
-#   IOS_DISTRIBUTION_CERT_PASSWORD
+# Required GitHub secret:
+#   APPSTORE_API_PRIVATE_KEY   — full .p8 file contents (AuthKey_XJQWAM2B45.p8)
 #
 # Required GitHub variables (Settings → Secrets and variables → Actions → Variables):
-#   APPSTORE_ISSUER_ID
-#   APPSTORE_API_KEY_ID
-#   APPLE_TEAM_ID                — 10-char Team ID (e.g. Cloudspace)
+#   APPSTORE_ISSUER_ID         — UUID at top of App Store Connect → Integrations → API
+#   APPSTORE_API_KEY_ID        — XJQWAM2B45
+#   APPLE_TEAM_ID              — 10-char Team ID (Developer → Membership)
 #
+# Uses Xcode automatic signing + App Store Connect API (no .p12 required).
 # Manual run: Actions → mobile-ios-appstore → Run workflow
 
 name: mobile-ios-appstore
@@ -31,6 +30,10 @@ jobs:
     defaults:
       run:
         working-directory: mobile
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,30 +54,27 @@ jobs:
           cd ios/App
           pod install
 
-      - name: Import distribution certificate
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.IOS_DISTRIBUTION_CERT_BASE64 }}
-          p12-password: ${{ secrets.IOS_DISTRIBUTION_CERT_PASSWORD }}
-
-      - name: Download App Store provisioning profile
-        uses: apple-actions/download-provisioning-profiles@v4
-        with:
-          bundle-id: vn.orangecloud.stocknews
-          profile-type: IOS_APP_STORE
-          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
-          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-
-      - name: Archive and export IPA
-        env:
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      - name: Write App Store Connect API key
         run: |
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s\n' "$APPSTORE_API_PRIVATE_KEY" > "$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+          chmod 600 "$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Archive and export IPA (automatic signing)
+        run: |
+          KEY_PATH="$RUNNER_TEMP/private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
           cd ios/App
+
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
             -archivePath "$RUNNER_TEMP/StockNews.xcarchive" archive \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APPSTORE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID" \
+            -authenticationKeyPath "$KEY_PATH" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_STYLE=Automatic \
             PRODUCT_BUNDLE_IDENTIFIER=vn.orangecloud.stocknews
 
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
@@ -91,7 +91,11 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/StockNews.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APPSTORE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID" \
+            -authenticationKeyPath "$KEY_PATH"
 
           mkdir -p ../../dist
           cp "$RUNNER_TEMP/export/App.ipa" ../../dist/StockNews.ipa
