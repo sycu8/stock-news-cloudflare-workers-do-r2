@@ -21,7 +21,7 @@ import {
   updateManualArticle
 } from "./db";
 import { NEWS_SOURCES } from "./config/sources";
-import { getFeedByDate, getTodayFeed, refreshDailyNews } from "./services/refresh";
+import { getFeedByDate, getTodayFeed, homeHtmlCacheKey, refreshDailyNews } from "./services/refresh";
 import { explainNewsImpact } from "./services/summarizer";
 import type { Env, NewsSourceRecord, NewsSourceType } from "./types";
 import { formatVietnamDateDisplay } from "./utils/date";
@@ -29,7 +29,7 @@ import { renderArticleDetailPage, renderHomePage, renderVNIndexChart } from "./u
 import { renderNotifyPage } from "./ui/notify";
 import { renderStatusPage } from "./ui/status";
 import { renderCalendarPage } from "./ui/calendar";
-import { getHSXMarketSnapshot } from "./services/hsx-market";
+import { getHSXMarketSnapshot, getVNIndexChartPoints } from "./services/hsx-market";
 import { buildStockInsight } from "./services/stock-insight";
 import {
   broadcastTelegramMessage,
@@ -259,8 +259,15 @@ app.on(["GET", "HEAD"], "/", async (c) => {
     return new Response(null, { status: 200, headers });
   }
 
-  // Stream HTML so RFC 8288 `Link` headers are sent immediately; slow DB work runs after
-  // the response is returned (avoids scanners aborting before headers on cold GET /).
+  const source = clampText(c.req.query("source"), 80);
+  const sentiment = (c.req.query("sentiment") ?? "").trim().toLowerCase();
+  const date = (c.req.query("date") ?? "").trim();
+  const q = clampText(c.req.query("q"), 120);
+  const page = clampInt(c.req.query("page"), 1, 1, 200);
+  const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
+  const appearance = readAppearance(c);
+  const isDefaultHome = reportDate === getTodayDateKey() && page === 1 && !source && !q && !sentiment;
+
   const outHeaders = new Headers({
     "cache-control": htmlCacheControl(),
     "content-language": "vi",
@@ -268,35 +275,50 @@ app.on(["GET", "HEAD"], "/", async (c) => {
   });
   appendHomepageAgentLinkHeaders(outHeaders);
 
+  if (isDefaultHome) {
+    const cachedHtml = await c.env.CACHE.get(homeHtmlCacheKey(reportDate, appearance));
+    if (cachedHtml) {
+      return new Response(cachedHtml, { status: 200, headers: outHeaders });
+    }
+  }
+
+  // Stream HTML so RFC 8288 `Link` headers are sent immediately; slow DB work runs after
+  // the response is returned (avoids scanners aborting before headers on cold GET /).
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       void (async () => {
         const encoder = new TextEncoder();
         try {
-          const source = clampText(c.req.query("source"), 80);
-          const sentiment = (c.req.query("sentiment") ?? "").trim().toLowerCase();
-          const date = (c.req.query("date") ?? "").trim();
-          const q = clampText(c.req.query("q"), 120);
-          const page = clampInt(c.req.query("page"), 1, 1, 200);
-          const reportDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayDateKey();
-          const feed = await getFeedByDate(c.env, reportDate, {
-            sourceFilter: source || undefined,
-            page,
-            pageSize: 50,
-            q: q || undefined
-          });
+          const [feed, views] = await Promise.all([
+            getFeedByDate(c.env, reportDate, {
+              sourceFilter: source || undefined,
+              page,
+              pageSize: 30,
+              q: q || undefined,
+              hsxMode: isDefaultHome ? "light" : "full"
+            }),
+            getViewsMap(c.env, reportDate)
+          ]);
           const availableSources = Array.from(new Set(feed.articles.map((article) => article.sourceName))).sort();
           const previousSentiment = feed.reportHistory?.[1]?.sentiment ?? null;
           const charts = buildChartsForToday(feed.articles, previousSentiment);
-          const views = await getViewsMap(c.env, feed.reportDate);
           const hsxSymbols = (feed.hsxMarketSnapshot?.topVolume ?? []).map((item) => item.symbol).filter(Boolean);
           const hotKeywords = withPriorityKeywords(extractHotKeywords(feed.articles, 12), hsxSymbols, 12);
+
+          const sentimentCache = new Map<string, string>();
+          const sentimentLabelFor = (article: { url: string; title: string; summaryVi: string | null; snippet: string }) => {
+            const cachedLabel = sentimentCache.get(article.url);
+            if (cachedLabel) return cachedLabel;
+            const label = classifySentimentText(`${article.title}\n${article.summaryVi ?? ""}\n${article.snippet}`).label;
+            sentimentCache.set(article.url, label);
+            return label;
+          };
 
           const withViewsAll = feed.articles.map((a) => ({
             article: a,
             views: views[a.url] ?? 0,
             score: hotScore(a),
-            sentiment: classifySentimentText(`${a.title}\n${a.summaryVi ?? ""}\n${a.snippet}`).label
+            sentiment: sentimentLabelFor(a)
           }));
           const withViews =
             sentiment === "positive" || sentiment === "neutral" || sentiment === "negative"
@@ -320,9 +342,9 @@ app.on(["GET", "HEAD"], "/", async (c) => {
           const visibleRemaining = isFirstPage ? pageSlice.slice(0, restLimit) : pageSlice.slice(0, maxVisible);
 
           const detailify = (article: { url: string; title: string; publishedAt: string }) => buildArticleDetailHrefFromPublished(article);
-          const withSentiment = <T extends { title: string; summaryVi: string | null; snippet: string }>(a: T) => ({
+          const withSentiment = <T extends { url: string; title: string; summaryVi: string | null; snippet: string }>(a: T) => ({
             ...a,
-            sentimentLabel: classifySentimentText(`${a.title}\n${a.summaryVi ?? ""}\n${a.snippet}`).label
+            sentimentLabel: sentimentLabelFor(a)
           });
           const pinnedForUi = isFirstPage
             ? pinned.slice(0, pinnedMax).map((a) =>
@@ -366,8 +388,11 @@ app.on(["GET", "HEAD"], "/", async (c) => {
             reportHistory: feed.reportHistory,
             cacheStatus: feed.cacheHit ? "hit" : "miss",
             calendarEvents: miniCalendarEvents,
-            appearance: readAppearance(c)
+            appearance
           });
+          if (isDefaultHome) {
+            c.executionCtx.waitUntil(c.env.CACHE.put(homeHtmlCacheKey(reportDate, appearance), html, { expirationTtl: 120 }));
+          }
           controller.enqueue(encoder.encode(html));
           controller.close();
         } catch (error) {
@@ -1139,12 +1164,10 @@ app.get("/api/hsx/vnindex-chart", async (c) => {
       return c.text("Invalid range", 400);
     }
 
-    const snapshot = await getHSXMarketSnapshot(c.env);
-    if (!snapshot) {
+    const points = await getVNIndexChartPoints(c.env, range);
+    if (!points.length) {
       return c.text("No HSX data", 404);
     }
-
-    const points = range === "1w" ? snapshot.vnindex1W : range === "1m" ? snapshot.vnindex1M : snapshot.vnindex1Y;
     const label = range === "1w" ? "Tuần" : range === "1m" ? "Tháng" : "Năm";
 
     const html = renderVNIndexChart(points, label);
