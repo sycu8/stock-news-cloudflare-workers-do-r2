@@ -15,19 +15,13 @@ export async function ensureOptimizedImageAsset(params: {
   const hash = await sha256Hex(sourceUrl);
   const key = `optimized/${namespace}/${hash}.webp`;
   const publicPath = `/assets/${key}`;
-  const hostedDeliveryUrl = getHostedDeliveryUrl(env, hash);
-  if (!hostedDeliveryUrl) {
-    const existing = await env.ASSETS.head(key);
-    if (existing) return publicPath;
-  }
+
+  const existing = await env.ASSETS.head(key);
+  if (existing) return publicPath;
 
   try {
     const optimized = await fetchOptimizedImageBytes(env, sourceUrl);
-    if (!optimized || optimized.byteLength < 128) return null;
-    const hostedUrl = await tryStoreInHostedImages(env, optimized, hash, sourceUrl, namespace);
-    if (hostedUrl) return hostedUrl;
-    const existing = await env.ASSETS.head(key);
-    if (existing) return publicPath;
+    if (!optimized || optimized.byteLength < 128) return sourceUrl;
     await env.ASSETS.put(key, optimized, {
       httpMetadata: { contentType: "image/webp", cacheControl: "public, max-age=31536000, immutable" },
       customMetadata: {
@@ -36,10 +30,12 @@ export async function ensureOptimizedImageAsset(params: {
         namespace
       }
     });
+    // Optional hosted upload; never use imagedelivery.net in DB (often 403 on public variant).
+    void tryStoreInHostedImages(env, optimized, hash, sourceUrl, namespace).catch(() => {});
     return publicPath;
   } catch (error) {
     console.error("Failed to cache optimized remote image:", error);
-    return null;
+    return sourceUrl;
   }
 }
 
@@ -63,23 +59,15 @@ async function tryStoreInHostedImages(
         sourceUrl: sourceUrl.slice(0, 512)
       }
     });
-    return getHostedDeliveryUrl(env, meta.id);
+    return meta.id;
   } catch (error) {
     const msg = error instanceof Error ? error.message.toLowerCase() : "";
-    // If the image already exists with the same deterministic id, reuse its delivery URL.
     if (msg.includes("already") || msg.includes("exists") || msg.includes("conflict")) {
-      return getHostedDeliveryUrl(env, hash);
+      return hash;
     }
-    console.warn("Hosted Images upload failed, falling back to R2:", error);
+    console.warn("Hosted Images upload failed:", error);
     return null;
   }
-}
-
-function getHostedDeliveryUrl(env: Env, imageId: string): string | null {
-  const accountHash = env.CF_IMAGES_ACCOUNT_HASH?.trim();
-  if (!accountHash) return null;
-  const variant = env.CF_IMAGES_VARIANT?.trim() || "public";
-  return `https://imagedelivery.net/${accountHash}/${imageId}/${variant}`;
 }
 
 async function fetchOptimizedImageBytes(env: Env, sourceUrl: string): Promise<ArrayBuffer | null> {

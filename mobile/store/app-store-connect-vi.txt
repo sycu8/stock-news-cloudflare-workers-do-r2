@@ -1,0 +1,80 @@
+=== APP STORE CONNECT — COPY/PASTE (Stock News iOS) ===
+
+--- APP INFORMATION ---
+Name: Stock News
+Subtitle (30 chars max): Tin chứng khoán Việt Nam
+Bundle ID: vn.orangecloud.stocknews
+SKU: stocknews-vn-ios-001
+Primary Language: Vietnamese
+
+--- URLS ---
+Privacy Policy URL: https://stocknews.orangecloud.vn/privacy
+Support URL: https://stocknews.orangecloud.vn/privacy
+Marketing URL (optional): https://stocknews.orangecloud.vn
+
+--- VERSION 1.0.1 ---
+Copyright: 2026 Cloudspace
+What's New (Release Notes):
+Phiên bản đầu tiên trên iOS: tin thị trường chứng khoán Việt Nam, watchlist, Investor Desk, biểu đồ tham khảo. Nội dung chỉ mang tính tham khảo, không phải khuyến nghị đầu tư.
+
+--- PROMOTIONAL TEXT (170 chars) ---
+Cập nhật tin thị trường VN mỗi 5 phút. Watchlist, bản tin sáng, Fear/Greed và biểu đồ tham khảo — không phải khuyến nghị đầu tư.
+
+--- DESCRIPTION (English — App Store default) ---
+Stock News by Orange Cloud — Vietnam stock market news in one app.
+
+Features:
+• News from trusted RSS and public sources, refreshed regularly
+• Filter by date, source, keyword, sentiment
+• Personal watchlist (up to 18 symbols)
+• Investor Desk: morning brief, Fear/Greed, sector rotation
+• Reference VN-Index, FX, and gold charts
+• Optional Telegram alerts (configured in-app)
+
+Disclaimer: For informational purposes only. Not investment advice. Market data may be delayed or inaccurate.
+
+Privacy: https://stocknews.orangecloud.vn/privacy
+Terms: https://stocknews.orangecloud.vn/terms
+Support: support@orangecloud.vn
+
+--- DESCRIPTION (Vietnamese — if localized) ---
+Stock News by Orange Cloud — tin thị trường chứng khoán Việt Nam trên iPhone/iPad.
+
+Tính năng:
+• Tổng hợp tin từ nguồn RSS/HTML uy tín, cập nhật định kỳ
+• Lọc theo ngày, nguồn, từ khóa, sentiment
+• Watchlist cá nhân (tối đa 18 mã)
+• Investor Desk: bản tin sáng, Fear/Greed, sector rotation
+• Biểu đồ VN-Index, tỷ giá, vàng tham khảo
+• Thông báo Telegram tùy chọn (cài trên trang /notify)
+
+Lưu ý: Chỉ mang tính tham khảo, không phải khuyến nghị mua/bán/giữ chứng khoán.
+
+--- KEYWORDS (100 chars, comma, no spaces after comma) ---
+chứng khoán,vietnam,stock,news,VN-Index,watchlist,thị trường,tin tức
+
+--- CATEGORIES ---
+Primary: News
+Secondary: Finance
+
+--- AGE RATING ---
+4+ (no objectionable content)
+
+--- APP REVIEW INFORMATION ---
+First name: [Your name]
+Last name: [Your name]
+Phone: [Your phone with country code]
+Email: support@orangecloud.vn
+
+Notes for reviewer:
+This is a native shell (Capacitor) loading https://stocknews.orangecloud.vn. No login required. All content is public news aggregation. Optional Telegram alerts are user-initiated on /notify. Investment disclaimer appears in Terms and on stock pages. No test account needed — open app to see homepage news feed. Try /desk for Investor Desk and /portfolio for watchlist.
+
+--- EXPORT COMPLIANCE (after upload) ---
+Uses encryption? Yes (HTTPS only)
+Exempt? Yes — standard TLS only (ITSAppUsesNonExemptEncryption = false)
+
+--- APP PRIVACY (Privacy Nutrition Labels) ---
+Collect data? Yes
+Tracking? No
+Data types: Product Interaction (optional, analytics), Other Data (watchlist — not linked to identity unless Telegram enabled)
+See APP_STORE_PRIVACY.md for full answers
