@@ -91,6 +91,39 @@ export async function summarizeDailyOverview(
   };
 }
 
+/** 2–3 paragraph executive brief for /briefing (cached per day). */
+export async function summarizeMorningExecutiveBrief(
+  reportDate: string,
+  report: DailyReport,
+  articles: StoredArticle[],
+  env: Env
+): Promise<string> {
+  const compact = articles
+    .slice(0, 24)
+    .map((a, i) => `${i + 1}. [${a.sourceName}] ${a.title} | ${truncate(a.summaryVi ?? a.snippet, 140)}`)
+    .join("\n");
+
+  const prompt = [
+    "Bạn là biên tập viên điểm tin sáng cho nhà đầu tư cá nhân Việt Nam.",
+    "Viết 2–3 đoạn ngắn (tiếng Việt có dấu) tóm tắt điều hành phiên: xu hướng tin, tâm lý, rủi ro cần theo dõi.",
+    "Không khuyến nghị mua/bán; dùng ngôn ngữ thận trọng.",
+    "Không lặp lại tiêu đề bài báo; tổng hợp ý chính.",
+    "",
+    `Ngày: ${reportDate}`,
+    `Tổng quan hệ thống: ${truncate(report.overviewVi, 600)}`,
+    `Outlook: ${truncate(report.outlookVi, 400)}`,
+    "",
+    "Tin trong ngày:",
+    compact || "(Không có tin.)"
+  ].join("\n");
+
+  return runSummarizationPrompt(
+    prompt,
+    env,
+    `${report.overviewVi}\n\n${report.outlookVi}`.trim()
+  );
+}
+
 export async function explainNewsImpact(
   article: Pick<StoredArticle, "title" | "sourceName" | "snippet" | "summaryVi" | "url">,
   env: Env,

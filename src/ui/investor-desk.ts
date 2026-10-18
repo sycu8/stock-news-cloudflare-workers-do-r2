@@ -1,5 +1,7 @@
 import type { DailyReport, StoredArticle } from "../types";
 import type { InvestorDailySnapshot } from "../services/investor-intel";
+import type { MorningBrief } from "../services/morning-brief";
+import type { ClusteredArticle } from "../services/news-cluster";
 import { formatVietnamDateDisplay, formatVietnamDateTimeDisplay } from "../utils/date";
 import { LOGO_URL } from "./brand";
 import { themeAppearanceSwitcher, themeFontLinks, themeSemanticVariablesBlock, type Appearance } from "./theme";
@@ -268,15 +270,31 @@ export function renderMorningBriefing(params: {
   reportDate: string;
   report: DailyReport;
   snap: InvestorDailySnapshot;
+  morningBrief?: MorningBrief | null;
   appearance: Appearance;
 }): string {
-  const { reportDate, report, snap, appearance } = params;
+  const { reportDate, report, snap, morningBrief, appearance } = params;
+  const aiBlock = morningBrief?.executiveBriefVi
+    ? `<div class="deskCard" style="grid-column:1/-1;border-color:rgba(34,211,238,.28);">
+        <h3>Điểm tin AI (đã lưu cache)</h3>
+        <div class="prose">${morningBrief.executiveBriefVi
+          .split(/\n\n+/)
+          .map((p) => `<p>${esc(p.trim())}</p>`)
+          .join("")}</div>
+        ${
+          morningBrief.personalizedNoteVi
+            ? `<p style="margin-top:14px;color:var(--muted);font-size:.88rem;"><strong>Danh mục:</strong> ${esc(morningBrief.personalizedNoteVi)}</p>`
+            : ""
+        }
+      </div>`
+    : "";
   const inner = `
     <div class="deskHero">
       <h2>Điểm tin sáng</h2>
       <p>Tóm tắt phiên &amp; luồng tin trong ngày ${esc(formatVietnamDateDisplay(`${reportDate}T12:00:00+07:00`))}. Cập nhật theo cron; không phải khuyến nghị mua/bán.</p>
     </div>
     <div class="deskGrid">
+      ${aiBlock}
       <div class="deskCard" style="grid-column:1/-1;">
         <h3>Tóm tắt điều hành</h3>
         <div class="prose">
@@ -361,8 +379,11 @@ export function renderPortfolioDesk(params: {
   showOnboarding?: boolean;
   /** Giá trị hiển thị trong ô nhập (đã có mã trong cookie hoặc prefill từ URL) */
   formInputValue: string;
+  watchId?: string | null;
+  cloudSynced?: boolean;
 }): string {
-  const { reportDate, symbols, articles, impactFn, flash, appearance, showOnboarding = false, formInputValue } = params;
+  const { reportDate, symbols, articles, impactFn, flash, appearance, showOnboarding = false, formInputValue, watchId, cloudSynced } =
+    params;
   const rows = articles
     .slice(0, 40)
     .map((a) => {
@@ -400,10 +421,15 @@ export function renderPortfolioDesk(params: {
       </div>`
     : "";
 
+  const exportHref = symbols.length ? `/api/watchlist/export?symbols=${encodeURIComponent(symbols.join(","))}` : "";
+  const cloudNote = watchId
+    ? `<p style="color:var(--muted);font-size:.82rem;margin-top:8px;">☁️ ID lưu trữ: <code>${esc(watchId.slice(0, 8))}…</code>${cloudSynced ? " · đã đồng bộ KV" : ""}</p>`
+    : "";
+
   const inner = `
     <div class="deskHero">
       <h2>Chế độ danh mục</h2>
-      <p>Lọc tin theo mã trong danh sách theo dõi (cookie trình duyệt, tối đa 18 mã). Không lưu tài khoản đăng nhập.</p>
+      <p>Lọc tin theo mã trong danh sách theo dõi (cookie + lưu KV tùy chọn, tối đa 18 mã). Không lưu tài khoản đăng nhập.</p>
     </div>
     ${onboardingBlock}
     ${flash ? `<div class="deskCard" style="border-color:rgba(34,211,238,.35);margin-bottom:14px;">${esc(flash)}</div>` : ""}
@@ -413,8 +439,17 @@ export function renderPortfolioDesk(params: {
         <form class="deskForm" method="POST" action="/portfolio">
           <label style="color:var(--muted);font-size:.82rem;">Nhập mã, cách nhau bởi dấu phẩy hoặc khoảng trắng (VD: VNM, FPT, HPG)</label>
           <input name="symbols" type="text" value="${escAttr(formInputValue)}" placeholder="VNM, FPT, HPG" autocomplete="off" />
-          <button class="btn" type="submit">Lưu &amp; lọc tin</button>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <button class="btn" type="submit">Lưu &amp; lọc tin</button>
+            ${exportHref ? `<a class="btn secondary" href="${escAttr(exportHref)}" download="watchlist.csv">Xuất CSV</a>` : ""}
+          </div>
         </form>
+        <form class="deskForm" method="POST" action="/portfolio/import" enctype="multipart/form-data" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+          <label style="color:var(--muted);font-size:.82rem;">Nhập từ CSV (cột <code>symbol</code> hoặc một mã mỗi dòng)</label>
+          <input name="file" type="file" accept=".csv,text/csv,text/plain" />
+          <button class="btn secondary" type="submit">Nhập CSV</button>
+        </form>
+        ${cloudNote}
       </div>
       <div class="deskCard" style="grid-column:1/-1;">
         <h3>Tin phù hợp ${symbols.length ? `(${articles.length} mục)` : "(chưa lọc — toàn bộ)"}</h3>
@@ -437,13 +472,37 @@ export function renderPortfolioDesk(params: {
   return deskShell({ title: "Danh mục", nav: "portfolio", inner, appearance, returnPath: "/portfolio" });
 }
 
-export function renderIntelArchive(params: { dates: string[]; appearance: Appearance }): string {
-  const { dates, appearance } = params;
+export function renderIntelArchive(params: {
+  dates: string[];
+  clusters?: ClusteredArticle[];
+  reportDate?: string;
+  appearance: Appearance;
+}): string {
+  const { dates, clusters = [], reportDate, appearance } = params;
+  const clusterRows = clusters
+    .filter((c) => c.sourceCount >= 2)
+    .slice(0, 24)
+    .map(
+      (c) =>
+        `<li><span class="pill">${c.sourceCount} nguồn</span> <a href="${escAttr(c.url)}" target="_blank" rel="noopener noreferrer">${esc(
+          c.title
+        )}</a> <span style="color:var(--muted);font-size:.82rem;">${esc(c.confirmationLabel)}</span></li>`
+    )
+    .join("");
   const inner = `
     <div class="deskHero">
       <h2>Lưu trữ phân tích theo ngày</h2>
       <p>Mỗi phiên hệ thống lưu snapshot JSON trên R2 (nếu bucket ASSETS bật) và chỉ mục ngày trên KV. Dùng cho so sánh tâm lý / sector theo thời gian.</p>
     </div>
+    ${
+      clusterRows
+        ? `<div class="deskCard" style="margin-bottom:18px;">
+        <h3>Tin đa nguồn hôm nay${reportDate ? ` (${esc(reportDate)})` : ""}</h3>
+        <p style="color:var(--muted);font-size:.86rem;">Gom nhóm tin trùng tiêu đề trong cùng giờ — heuristic, không phải xác nhận biên tập.</p>
+        <ul class="deskList">${clusterRows}</ul>
+      </div>`
+        : ""
+    }
     <div class="deskCard" style="max-width:720px;">
       <h3>Ngày đã lưu</h3>
       <ul class="deskList">

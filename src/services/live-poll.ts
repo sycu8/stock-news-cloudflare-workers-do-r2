@@ -1,6 +1,6 @@
 import { listArticlesPublishedAfter } from "../db";
 import type { Env } from "../types";
-import { filterArticlesForPortfolio } from "./investor-intel";
+import { filterArticlesForPortfolio } from "./portfolio-watchlist";
 
 const FEED_CACHE_PREFIX = "today-report-cache:";
 

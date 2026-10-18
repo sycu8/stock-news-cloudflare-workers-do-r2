@@ -3,6 +3,7 @@ import { listEnabledSources, logCrawlRun } from "../db";
 import type { Env, NewsSourceRecord, NormalizedArticle } from "../types";
 import { toIsoOrNow } from "../utils/date";
 import { normalizeTitle, stripHtml, truncate } from "../utils/text";
+import { pickRssItemImage } from "./rss-image";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -13,10 +14,17 @@ const SOURCE_FETCH_CONCURRENCY = 8;
 
 interface RssItem {
   title?: string;
-  link?: string;
+  link?: string | { "@_href"?: string };
   pubDate?: string;
+  published?: string;
   description?: string;
+  summary?: string;
+  "content:encoded"?: string;
   guid?: string | { "#text"?: string };
+  enclosure?: { "@_url"?: string; "@_type"?: string } | Array<{ "@_url"?: string; "@_type"?: string }>;
+  "media:thumbnail"?: { "@_url"?: string } | Array<{ "@_url"?: string }>;
+  "media:content"?: { "@_url"?: string; "@_type"?: string; "@_medium"?: string } | Array<{ "@_url"?: string; "@_type"?: string; "@_medium"?: string }>;
+  thumbnail?: { "@_url"?: string };
 }
 
 export async function fetchAllSources(): Promise<NormalizedArticle[]> {
@@ -127,22 +135,27 @@ function normalizeRssItem(item: RssItem, source: NewsSourceRecord): NormalizedAr
     return null;
   }
 
-  const cleanedSnippet = truncate(stripHtml(item.description ?? ""), 500);
+  const cleanedSnippet = truncate(stripHtml(item.description ?? item.summary ?? ""), 500);
   const hasSnippet = Boolean(cleanedSnippet);
+  const imageUrl = pickRssItemImage(item, item.description ?? item.summary ?? "");
   return {
     sourceId: source.id,
     sourceName: source.name,
     title,
     url: link,
-    publishedAt: toIsoOrNow(item.pubDate),
+    publishedAt: toIsoOrNow(item.pubDate ?? item.published),
     snippet: hasSnippet ? cleanedSnippet : truncate(title, 220),
-    contentLimited: !hasSnippet
+    contentLimited: !hasSnippet,
+    imageUrl
   };
 }
 
 function pickLink(item: RssItem): string {
   if (typeof item.link === "string" && item.link.trim().length > 0) {
     return item.link.trim();
+  }
+  if (typeof item.link === "object" && item.link?.["@_href"]?.trim()) {
+    return item.link["@_href"].trim();
   }
   if (typeof item.guid === "string" && item.guid.trim().startsWith("http")) {
     return item.guid.trim();
