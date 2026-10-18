@@ -45,6 +45,8 @@ export interface Env {
   /** Workers AI model for generated thumbnails (optional). */
   WORKERS_AI_MODEL_IMAGE?: string;
   ADMIN_REFRESH_TOKEN: string;
+  /** Temporary compatibility escape hatch. Prefer cookie login or x-admin-token header. */
+  ALLOW_ADMIN_QUERY_TOKEN?: string;
   TZ?: string;
   WORKER_VERSION?: string;
   /** Machine client OAuth (client_credentials) — optional */
@@ -106,6 +108,7 @@ export interface NormalizedArticle {
   publishedAt: string;
   snippet: string;
   contentLimited: boolean;
+  imageUrl?: string | null;
 }
 
 export interface StoredArticle extends NormalizedArticle {

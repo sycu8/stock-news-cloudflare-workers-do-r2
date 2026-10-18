@@ -1,0 +1,30 @@
+{
+  "name": "stock-news-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stock News iOS and Android apps (Capacitor 6)",
+  "scripts": {
+    "sync": "npx cap sync",
+    "copy": "npx cap copy",
+    "android": "npx cap open android",
+    "ios": "npx cap open ios",
+    "assets": "npx capacitor-assets generate --iconBackgroundColor '#0f172a' --iconBackgroundColorDark '#0f172a' --splashBackgroundColor '#0f172a' --splashBackgroundColorDark '#0f172a'"
+  },
+  "author": "Orange Cloud",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/browser": "^6.0.6",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/ios": "^6.2.1",
+    "@capacitor/network": "^6.0.4",
+    "@capacitor/splash-screen": "^6.0.4",
+    "@capacitor/status-bar": "^6.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "typescript": "^6.0.3"
+  }
+}

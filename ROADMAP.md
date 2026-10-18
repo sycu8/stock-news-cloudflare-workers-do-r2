@@ -24,8 +24,8 @@ A separate experimental project lives in [`OneManCompany/`](OneManCompany/) (AI 
 | TypeScript check in CI | Shipped | `npm run check` |
 | Unit tests in CI | Shipped | `npm run test:article` |
 | Lighthouse + Pa11y smoke | Shipped | `.github/workflows/perf-a11y-ci.yml` |
-| OpenAPI catalog expansion | Shipped | Desk, watchlist, live poll, clusters, push, RUM |
-| Remove `ALLOW_ADMIN_QUERY_TOKEN` escape hatch | Shipped | Query-string admin token removed |
+| OpenAPI catalog expansion | Shipped | Desk, portfolio, watchlist, live poll, AI search, clusters, push, RUM |
+| Admin query token | Shipped | Disabled by default; cookie/header preferred (`ALLOW_ADMIN_QUERY_TOKEN`) |
 
 ### Phase 1 — Terminal MVP
 

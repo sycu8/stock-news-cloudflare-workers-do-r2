@@ -206,12 +206,13 @@ function getCookieValue(c: Context<{ Bindings: Env }> | any, name: string): stri
 }
 
 function getAdminToken(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): string | null {
-  // Prefer cookie-based login to avoid leaking token in URL query params.
   const fromCookie = getCookieValue(c as any, ADMIN_COOKIE_NAME);
   if (fromCookie) return fromCookie;
   const fromHeader = c.req.header("x-admin-token");
   if (fromHeader) return fromHeader;
-  return null;
+  // Query-string tokens are disabled by default (leak via logs/referrers). Opt-in only for legacy scripts.
+  if (c.env.ALLOW_ADMIN_QUERY_TOKEN !== "true") return null;
+  return c.req.query("token") ?? null;
 }
 
 function isAdminAuthorized(c: { env: Env; req: { header(name: string): string | undefined; query(name: string): string | undefined } }): boolean {
@@ -920,7 +921,7 @@ app.get("/img", async (c) => {
 
     const contentType = resp.headers.get("content-type") ?? "application/octet-stream";
     if (!resp.ok || !contentType.toLowerCase().startsWith("image/")) {
-      return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
+      return c.text("Image unavailable", 404);
     }
     const out = new Response(resp.body, {
       status: resp.status,
@@ -934,7 +935,7 @@ app.get("/img", async (c) => {
     c.executionCtx.waitUntil(cache.put(cacheKey, out.clone()));
     return out;
   } catch {
-    return c.redirect(`/assets/${LOGO_ASSET_KEY}`, 302);
+    return c.text("Image unavailable", 404);
   }
 });
 
@@ -1199,23 +1200,27 @@ app.get("/rss/today", async (c) => {
 app.post("/api/rum", async (c) => {
   try {
     const payload = await c.req.json();
+    const routeTemplate = clampText(payload?.routeTemplate, 32) ?? "unknown";
+    const metric = clampText(payload?.metric, 16) ?? "unknown";
+    const value = Number(payload?.value ?? 0);
+    const deviceClass = clampText(payload?.deviceClass, 16) ?? "unknown";
+    const path = clampText(payload?.path, 200) ?? "";
+    const cacheStatus = clampText(payload?.cacheStatus, 16) ?? "unknown";
+    console.log(
+      "rum_metric",
+      JSON.stringify({ routeTemplate, metric, value, deviceClass, path, cacheStatus, at: new Date().toISOString() })
+    );
     const sample = parseRumPayload(payload);
-    if (!sample) {
-      const routeTemplate = clampText(payload?.routeTemplate, 32) ?? "unknown";
-      const metric = clampText(payload?.metric, 16) ?? "unknown";
-      const value = Number(payload?.value ?? 0);
-      if (metric !== "unknown" && Number.isFinite(value)) {
-        await recordRumSample(c.env, {
-          metric,
-          path: clampText(payload?.path, 200) ?? routeTemplate,
-          value,
-          at: new Date().toISOString()
-        });
-      }
-      return c.json({ ok: true }, 202);
+    if (sample) {
+      await recordRumSample(c.env, sample);
+    } else if (metric !== "unknown" && Number.isFinite(value)) {
+      await recordRumSample(c.env, {
+        metric,
+        path: path || routeTemplate,
+        value,
+        at: new Date().toISOString()
+      });
     }
-    await recordRumSample(c.env, sample);
-    console.log("rum_metric", JSON.stringify({ ...sample, at: sample.at ?? new Date().toISOString() }));
     return c.json({ ok: true }, 202);
   } catch {
     return c.json({ error: "invalid rum payload" }, 400);
@@ -1465,7 +1470,7 @@ app.on(["GET", "HEAD", "OPTIONS"], "/.well-known/mcp/server-card.json", (c) => {
   return c.json(buildMcpServerCard(origin), 200, headers);
 });
 
-/** Reserved streamable MCP URL from server-card; returns 501 until a real MCP transport is implemented. */
+/** JSON-RPC MCP at POST /mcp (initialize, tools/list, tools/call). GET returns transport metadata. */
 const mcpTransportCorsHeaders: Record<string, string> = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
