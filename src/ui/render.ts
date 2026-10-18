@@ -407,7 +407,7 @@ export function renderHomePage({
           <span class="historyKpi">Tiêu cực ${negPct}%</span>
           <span class="historyKpi">Điểm ${sentiment.score}</span>
         </div>
-        <div class="stackBar" aria-label="History sentiment distribution">
+        <div class="stackBar" role="img" aria-label="History sentiment distribution">
           <span class="seg pos" style="width:${posPct}%"></span>
           <span class="seg neu" style="width:${neuPct}%"></span>
           <span class="seg neg" style="width:${negPct}%"></span>
@@ -650,6 +650,7 @@ export function renderHomePage({
       .meta { color: var(--muted); font-size: 0.86rem; }
       .tag { color: #b54708; font-size: 0.86rem; }
       a { color: var(--primary); text-decoration: none; }
+      .disclaimer a, .meta a { text-decoration: underline; text-underline-offset: 2px; }
       a:hover { text-decoration: underline; }
       .cardActions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
       .source-link,.aiExplainBtn{
@@ -1136,15 +1137,15 @@ export function renderHomePage({
                 <table class="goldTable">
                   <thead>
                     <tr>
-                      <th rowspan="2">Thương hiệu</th>
-                      <th colspan="2">Hôm nay</th>
-                      <th colspan="2">Hôm qua</th>
+                      <th rowspan="2" id="gold-brand">Thương hiệu</th>
+                      <th colspan="2" id="gold-today">Hôm nay</th>
+                      <th colspan="2" id="gold-yesterday">Hôm qua</th>
                     </tr>
                     <tr>
-                      <th>Giá mua</th>
-                      <th>Giá bán</th>
-                      <th>Giá mua</th>
-                      <th>Giá bán</th>
+                      <th id="gold-today-buy">Giá mua</th>
+                      <th id="gold-today-sell">Giá bán</th>
+                      <th id="gold-yesterday-buy">Giá mua</th>
+                      <th id="gold-yesterday-sell">Giá bán</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1153,11 +1154,11 @@ export function renderHomePage({
                         .map(
                           (row) =>
                             `<tr>
-                              <td>${escapeHtml(row.brand)}</td>
-                              ${renderGoldCellWithDelta(row.buy, row.yesterdayBuy)}
-                              ${renderGoldCellWithDelta(row.sell, row.yesterdaySell)}
-                              <td>${escapeHtml(row.yesterdayBuy ?? "-")}</td>
-                              <td>${escapeHtml(row.yesterdaySell ?? "-")}</td>
+                              <td headers="gold-brand">${escapeHtml(row.brand)}</td>
+                              ${renderGoldCellWithDelta(row.buy, row.yesterdayBuy, "gold-today gold-today-buy")}
+                              ${renderGoldCellWithDelta(row.sell, row.yesterdaySell, "gold-today gold-today-sell")}
+                              <td headers="gold-yesterday gold-yesterday-buy">${escapeHtml(row.yesterdayBuy ?? "-")}</td>
+                              <td headers="gold-yesterday gold-yesterday-sell">${escapeHtml(row.yesterdaySell ?? "-")}</td>
                             </tr>`
                         )
                         .join("") || '<tr><td colspan="5">Đang cập nhật dữ liệu vàng.</td></tr>'
@@ -1668,17 +1669,18 @@ function formatFxValue(pairCode: "usd-vnd" | "sgd-vnd" | "jpy-vnd" | "cny-vnd", 
   return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: fractionDigits, minimumFractionDigits: fractionDigits }).format(value);
 }
 
-function renderGoldCellWithDelta(today: string, yesterday?: string | null): string {
+function renderGoldCellWithDelta(today: string, yesterday: string | null | undefined, headers: string): string {
   const todayNum = parseVietnamPrice(today);
   const yNum = parseVietnamPrice(yesterday ?? "");
+  const headersAttr = ` headers="${headers}"`;
   if (todayNum === null || yNum === null || yNum <= 0) {
-    return `<td><span class="goldCellValue">${escapeHtml(today || "-")}</span></td>`;
+    return `<td${headersAttr}><span class="goldCellValue">${escapeHtml(today || "-")}</span></td>`;
   }
   const diff = todayNum - yNum;
   const diffText = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Math.abs(diff));
   const cls = diff > 0 ? "up" : diff < 0 ? "down" : "flat";
   const arrow = diff > 0 ? "▲" : diff < 0 ? "▼" : "•";
-  return `<td><span class="goldCellValue">${escapeHtml(today || "-")}</span><span class="goldDelta ${cls}">${arrow} ${diffText}</span></td>`;
+  return `<td${headersAttr}><span class="goldCellValue">${escapeHtml(today || "-")}</span><span class="goldDelta ${cls}">${arrow} ${diffText}</span></td>`;
 }
 
 function parseVietnamPrice(input: string): number | null {

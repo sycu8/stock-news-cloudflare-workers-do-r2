@@ -32,6 +32,8 @@ import { analyzeSentimentForArticles } from "./sentiment";
 import { collapseDuplicateNews } from "./news-cluster";
 import { notifySubscribersOfNewArticles } from "./telegram-bot";
 import { generateMorningBriefIfNeeded } from "./morning-brief";
+import { persistArticleClusters } from "./news-cluster-persist";
+import { notifyPushSubscribersOfArticles } from "./web-push";
 import { getFxMarketSnapshot, getGoldMarketSnapshot } from "./market-extra";
 import { precomputeExplainCacheIfNeeded } from "./news-explain-cache";
 import { defaultNoFeedOverviewCopy } from "./vietnam-holidays";
@@ -179,7 +181,18 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
     aiOk: Boolean(env.AI || env.OPENAI_API_KEY),
     articleCount: finalizedArticles.length
   });
+  try {
+    await persistArticleClusters(env.DB, finalizedArticles);
+  } catch (e) {
+    console.error("persist clusters:", e);
+  }
   await notifySubscribersOfNewArticles(env, finalizedArticles, newlySeenUrls);
+  try {
+    const clustered = collapseDuplicateNews(finalizedArticles.filter((a) => newlySeenUrls.has(a.url)));
+    if (clustered.length) await notifyPushSubscribersOfArticles(env, clustered);
+  } catch (e) {
+    console.error("web push notify:", e);
+  }
   try {
     await generateMorningBriefIfNeeded(env, reportDate, report, finalizedArticles);
   } catch (e) {

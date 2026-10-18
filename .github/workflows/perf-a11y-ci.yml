@@ -20,10 +20,20 @@ jobs:
         run: npm run check
       - name: Unit tests
         run: npm run test:article
+      - name: Apply local D1 migrations
+        run: npx wrangler d1 migrations apply vn_market_news --local
       - name: Run worker for CI checks
         run: |
           npm run dev -- --local --port 8787 > worker.log 2>&1 &
-          sleep 12
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8787/health" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Worker did not become ready" >&2
+          cat worker.log >&2 || true
+          exit 1
       - name: Route smoke tests (lang/skip/main + RSS + pagination)
         run: |
           curl -fsS "http://127.0.0.1:8787/" | grep -q 'lang="vi"'
