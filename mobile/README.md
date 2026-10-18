@@ -15,7 +15,7 @@ Built with **Capacitor 6** loading the production web app over HTTPS (always up 
 ## Prerequisites
 
 - Node.js 20+
-- **Android:** Android Studio, JDK 17, Android SDK 34
+- **Android:** Android Studio, JDK 17, Android SDK 35
 - **iOS:** macOS, Xcode 15+, Apple Developer account ($99/yr)
 - **Signing:** release keystore (Android) + distribution certificate (iOS)
 
