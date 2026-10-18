@@ -104,6 +104,7 @@ export interface NormalizedArticle {
   publishedAt: string;
   snippet: string;
   contentLimited: boolean;
+  imageUrl?: string | null;
 }
 
 export interface StoredArticle extends NormalizedArticle {

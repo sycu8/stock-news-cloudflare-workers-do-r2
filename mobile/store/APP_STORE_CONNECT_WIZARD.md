@@ -129,7 +129,7 @@ npx cap open ios
 1. **Signing & Capabilities** → Team = Cloudspace
 2. **Bundle Identifier:** `vn.orangecloud.stocknews`
 3. **Associated Domains:** `applinks:stocknews.orangecloud.vn`
-4. **Version:** 1.0.1 (Marketing) · **Build:** 2
+4. **Version:** 1.0.1 (Marketing) · **Build:** 3
 5. Destination: **Any iOS Device (arm64)**
 6. **Product → Archive**
 7. **Distribute App → App Store Connect → Upload**

@@ -15,7 +15,7 @@ Built with **Capacitor 6** loading the production web app over HTTPS (always up 
 ## Prerequisites
 
 - Node.js 20+
-- **Android:** Android Studio, JDK 17, Android SDK 34
+- **Android:** Android Studio, JDK 17, Android SDK 35
 - **iOS:** macOS, Xcode 15+, Apple Developer account ($99/yr)
 - **Signing:** release keystore (Android) + distribution certificate (iOS)
 
@@ -31,11 +31,19 @@ npx cap sync
 
 See **`dist/stocknews-play-upload-kit.zip`** and **`PLAY_CONSOLE_WIZARD.md`**.
 
-### Upload to App Store (Mac required)
+### Upload to App Store (Mac + Xcode)
 
-See **`store/APP_STORE_CONNECT_WIZARD.md`** and copy fields from **`store/app-store-connect-vi.txt`**.
+1. Download or build **`dist/stocknews-ios-xcode-kit.zip`** (see below)
+2. Follow **`store/XCODE_UPLOAD_VI.md`** (Vietnamese) or **`store/APP_STORE_CONNECT_WIZARD.md`**
+3. Copy metadata from **`store/app-store-connect-vi.txt`**
+4. Screenshots (iPhone 6.7" + iPad 12.9"): **`store/APP_STORE_SCREENSHOTS.md`** — run `./scripts/capture-app-store-screenshots.sh`
 
-Screenshots (iPhone 6.7" + iPad 12.9"): **`store/APP_STORE_SCREENSHOTS.md`** — run `./scripts/capture-app-store-screenshots.sh`
+Package the kit on any machine with the repo:
+
+```bash
+bash mobile/scripts/package-ios-xcode-kit.sh
+# Output: mobile/dist/stocknews-ios-xcode-kit.zip
+```
 
 ### Android (release AAB for Play Store)
 

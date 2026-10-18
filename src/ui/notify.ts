@@ -44,7 +44,7 @@ export function renderNotifyPage(params: {
     <div class="card">
       <h1>🔔 Nhận thông báo (Telegram)</h1>
       <p>
-        Kết nối bot Telegram để nhận ping khi có tin tức / cập nhật quan trọng (broadcast từ admin).
+        Kết nối bot Telegram để nhận ping khi có tin mới — có thể lọc theo mã, điểm nổi bật và tin đa nguồn.
         Không thay thế tư vấn đầu tư.
       </p>
       ${
@@ -59,8 +59,9 @@ export function renderNotifyPage(params: {
         <li>Bấm nút <strong>Mở Telegram và bật thông báo</strong> ở trên.</li>
         <li>Trong Telegram, chọn <strong>Start</strong> để đăng ký nhận bản tin.</li>
         <li>Đảm bảo bạn không tắt hoặc chặn bot để tiếp tục nhận thông báo tự động.</li>
-        <li>Khi hệ thống có bài mới quan trọng, bot sẽ gửi bản tin gộp vào Telegram của bạn.</li>
-        <li>Nếu chưa nhận được thông báo, hãy mở lại bot và gửi <code>/start</code> một lần nữa.</li>
+        <li>Khi hệ thống có bài mới, bot gửi tin phù hợp <strong>cài đặt cá nhân</strong> của bạn.</li>
+        <li>Cá nhân hoá trong Telegram: <code>/symbols VNM,FPT</code>, <code>/impact 40</code>, <code>/breaking on</code>, <code>/settings</code>.</li>
+        <li>Gửi <code>/all</code> để nhận mọi tin (bỏ lọc mã). Gửi <code>/stop</code> để huỷ.</li>
       </ol>
       <p class="meta">Mẹo: bạn có thể ghim bot lên đầu danh sách chat để không bỏ lỡ tín hiệu mới.</p>
     </div>
