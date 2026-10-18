@@ -1,4 +1,5 @@
 import { formatVietnamDateTimeDisplay } from "../utils/date";
+import type { RumAggregate } from "../services/rum-metrics";
 import { themeAppearanceSwitcher, themeFontLinks, themeSemanticVariablesBlock, type Appearance } from "./theme";
 
 export function renderStatusPage(params: {
@@ -17,6 +18,9 @@ export function renderStatusPage(params: {
     fetchedCount: number;
     checkedAt: string | null;
   }>;
+  rumAggregates?: Array<RumAggregate & { avg: number }>;
+  pushConfigured?: boolean;
+  pushSubscriberCount?: number;
 }): string {
   const feedRows = params.feedHealth
     .map((x) => {
@@ -34,6 +38,12 @@ export function renderStatusPage(params: {
   const total = params.feedHealth.length;
   const aiLabel = params.aiStatus === "ok" ? "Ổn định" : "Suy giảm";
   const sw = themeAppearanceSwitcher(params.appearance, "/status");
+  const rumRows = (params.rumAggregates ?? [])
+    .map(
+      (r) =>
+        `<tr><td>${escapeHtml(r.metric)}</td><td><code>${escapeHtml(r.path)}</code></td><td>${r.count}</td><td>${r.avg}</td><td>${r.min}–${r.max}</td></tr>`
+    )
+    .join("");
   return `<!doctype html><html lang="vi" data-theme="${params.appearance}"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Trạng thái hệ thống • VN Market Daily</title>
   <meta name="description" content="Trang theo dõi sức khỏe nguồn dữ liệu, AI và tần suất cập nhật của hệ thống." />
@@ -61,6 +71,7 @@ export function renderStatusPage(params: {
       <div class="kpi"><strong>AI tóm tắt</strong><div>${escapeHtml(aiLabel)}</div></div>
       <div class="kpi"><strong>Tần suất cập nhật</strong><div>${params.avgUpdateMinutes ?? "n/a"} phút</div></div>
       <div class="kpi"><strong>Lần deploy gần nhất</strong><div>${escapeHtml(params.workerVersion)}</div></div>
+      <div class="kpi"><strong>Web Push</strong><div>${params.pushConfigured ? `${params.pushSubscriberCount ?? 0} đăng ký` : "chưa cấu hình VAPID"}</div></div>
       <div class="kpi"><strong>Cập nhật khả dụng gần nhất</strong><div>${escapeHtml(params.latestUpdateAt ? formatVietnamDateTimeDisplay(params.latestUpdateAt) : "n/a")}</div></div>
     </section>
     <section class="card">
@@ -70,6 +81,13 @@ export function renderStatusPage(params: {
         <tbody>${feedRows || '<tr><td colspan="5">No sources found.</td></tr>'}</tbody>
       </table>
     </section>
+    ${
+      rumRows
+        ? `<section class="card"><h2 style="margin-top:0;">RUM (14 ngày, KV)</h2><p style="color:var(--muted);font-size:.88rem;">Trung bình từ beacon client — thử nghiệm, không phải SLA.</p>
+      <table><thead><tr><th>Metric</th><th>Path</th><th>N</th><th>Avg</th><th>Min–Max</th></tr></thead><tbody>${rumRows}</tbody></table>
+      <p><a href="/api/rum/summary">JSON summary</a></p></section>`
+        : ""
+    }
   </main></body></html>`;
 }
 

@@ -72,8 +72,11 @@ export function CeoConsole(props: { companyId: string; onAgentsRefresh: () => vo
       <div className="console-body">
         {tab === "chat" && (
           <>
-            <p className="roster-meta">Quick memo to your EA (local only in this MVP).</p>
-            <textarea className="omc-textarea" style={{ minHeight: 80 }} value={chat} onChange={(e) => setChat(e.target.value)} placeholder="Type a note…" />
+            <p className="roster-meta">Gửi memo ngắn cho EA — chạy pipeline giống Objective.</p>
+            <textarea className="omc-textarea" style={{ minHeight: 80 }} value={chat} onChange={(e) => setChat(e.target.value)} placeholder="VD: Draft Q3 hiring plan for 2 engineers…" />
+            <button type="button" className="omc-btn" disabled={busy || !chat.trim()} onClick={() => { setObjective(chat); void runObjective(); setTab("objective"); }}>
+              Gửi cho team
+            </button>
           </>
         )}
         {tab === "objective" && (
