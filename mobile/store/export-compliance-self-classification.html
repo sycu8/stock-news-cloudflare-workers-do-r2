@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Stock News — Encryption Self-Classification</title>
+  <style>
+    body { font-family: Georgia, "Times New Roman", serif; max-width: 700px; margin: 40px auto; padding: 0 24px; line-height: 1.55; color: #111; }
+    h1 { font-size: 1.25rem; text-align: center; margin-bottom: 4px; }
+    .sub { text-align: center; font-size: 0.9rem; color: #444; margin-bottom: 32px; }
+    h2 { font-size: 1rem; margin-top: 28px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    td { padding: 6px 0; vertical-align: top; }
+    td:first-child { width: 38%; font-weight: bold; }
+    ul { margin: 8px 0; }
+    .sig { margin-top: 40px; }
+    .sig line { display: block; border-bottom: 1px solid #333; margin: 28px 0 6px; height: 1px; }
+    .note { font-size: 0.85rem; color: #555; margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; }
+    @media print { body { margin: 20px; } }
+  </style>
+</head>
+<body>
+  <h1>Self-Classification Report for Encryption Products</h1>
+  <p class="sub">Export Administration Regulations — Category 5, Part 2 exemption</p>
+
+  <h2>1. Product information</h2>
+  <table>
+    <tr><td>Product name</td><td>Stock News</td></tr>
+    <tr><td>Bundle identifier</td><td>vn.orangecloud.stocknews</td></tr>
+    <tr><td>Platform</td><td>iOS (iPhone / iPad)</td></tr>
+    <tr><td>Version</td><td>1.0.1</td></tr>
+    <tr><td>Developer / Seller</td><td>Cloudspace (Orange Cloud)</td></tr>
+    <tr><td>Contact</td><td>support@orangecloud.vn</td></tr>
+    <tr><td>Website</td><td>https://stocknews.orangecloud.vn</td></tr>
+  </table>
+
+  <h2>2. Product description</h2>
+  <p>Stock News displays Vietnam stock market news by loading the developer's website inside a native iOS shell (Capacitor WebView). The app does not execute trades or store financial account credentials.</p>
+
+  <h2>3. Encryption use</h2>
+  <p>The app uses encryption <strong>only</strong> for confidentiality of data in transit (HTTPS / TLS).</p>
+  <ul>
+    <li>All network traffic uses HTTPS (TLS 1.2/1.3) via Apple's iOS networking APIs (URLSession / WKWebView).</li>
+    <li>No proprietary or non-standard encryption algorithms.</li>
+    <li>No custom encryption beyond Apple's operating system.</li>
+    <li><code>ITSAppUsesNonExemptEncryption</code> = NO in Info.plist.</li>
+  </ul>
+
+  <h2>4. Export classification</h2>
+  <p>This product qualifies for EAR Category 5 Part 2 exemption: standard TLS for data in transit, mass-market public app, no military use. No CCATS or ERN required for this encryption use.</p>
+
+  <h2>5. Declaration</h2>
+  <p>I declare that the information in this report is accurate and complete.</p>
+  <div class="sig">
+    <p>Authorized name:</p><line></line>
+    <p>Title:</p><line></line>
+    <p>Organization: Cloudspace</p>
+    <p>Date:</p><line></line>
+    <p>Signature:</p><line></line>
+  </div>
+
+  <p class="note">Save as PDF (Print → Save as PDF) and upload to App Store Connect → Stock News → App Information → App Encryption Documentation.</p>
+</body>
+</html>

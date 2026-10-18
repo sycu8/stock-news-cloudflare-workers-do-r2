@@ -129,7 +129,7 @@ npx cap open ios
 1. **Signing & Capabilities** → Team = Cloudspace
 2. **Bundle Identifier:** `vn.orangecloud.stocknews`
 3. **Associated Domains:** `applinks:stocknews.orangecloud.vn`
-4. **Version:** 1.0.1 (Marketing) · **Build:** 2
+4. **Version:** 1.0.1 (Marketing) · **Build:** 3
 5. Destination: **Any iOS Device (arm64)**
 6. **Product → Archive**
 7. **Distribute App → App Store Connect → Upload**
@@ -142,7 +142,7 @@ Select **1.0.1** build after processing (~15–30 min).
 
 | Field | Value |
 |-------|--------|
-| **Screenshots** | iPhone 6.7" (1290×2796) min 3 — capture `/`, `/desk`, `/portfolio` in Safari or simulator |
+| **Screenshots** | iPhone 6.7" (1290×2796) + iPad 12.9" (2048×2732) min 3 each — see **`APP_STORE_SCREENSHOTS.md`** |
 | **Promotional Text** | from `app-store-connect-vi.txt` |
 | **Description** | from `app-store-connect-vi.txt` |
 | **Keywords** | chứng khoán,vietnam,stock,news,VN-Index,watchlist |
@@ -213,6 +213,8 @@ After upload, when asked:
 Capture in **Safari on iPhone** or **Xcode Simulator** → save PNG.
 
 Suggested screens: Homepage, `/desk`, `/portfolio`.
+
+Full sizes, script, and upload steps: **`APP_STORE_SCREENSHOTS.md`**
 
 ---
 

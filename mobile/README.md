@@ -36,6 +36,7 @@ See **`dist/stocknews-play-upload-kit.zip`** and **`PLAY_CONSOLE_WIZARD.md`**.
 1. Download or build **`dist/stocknews-ios-xcode-kit.zip`** (see below)
 2. Follow **`store/XCODE_UPLOAD_VI.md`** (Vietnamese) or **`store/APP_STORE_CONNECT_WIZARD.md`**
 3. Copy metadata from **`store/app-store-connect-vi.txt`**
+4. Screenshots (iPhone 6.7" + iPad 12.9"): **`store/APP_STORE_SCREENSHOTS.md`** — run `./scripts/capture-app-store-screenshots.sh`
 
 Package the kit on any machine with the repo:
 

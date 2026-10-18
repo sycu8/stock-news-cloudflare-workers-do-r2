@@ -38,9 +38,13 @@ https://stocknews.orangecloud.vn/.well-known/apple-app-site-association
 
 ## Xcode signing
 
-1. Add your Apple ID in Xcode → Settings → Accounts → **Cloudspace team**
-2. `npx cap open ios` → Signing & Capabilities → Team = Cloudspace
-3. Associated Domains: `applinks:stocknews.orangecloud.vn`
+See **`APPLE_IOS_CSR.md`** to create and upload a Certificate Signing Request (CSR).
+
+1. Generate CSR: `cd mobile && ./scripts/create-apple-csr.sh`
+2. Upload `dist/apple-signing/stocknews-ios.certSigningRequest` at developer.apple.com → Certificates → +
+3. Add your Apple ID in Xcode → Settings → Accounts → **Cloudspace team**
+4. `npx cap open ios` → Signing & Capabilities → Team = Cloudspace
+5. Associated Domains: `applinks:stocknews.orangecloud.vn`
 
 ## App Store Connect
 

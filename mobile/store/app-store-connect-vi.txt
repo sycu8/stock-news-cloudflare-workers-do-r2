@@ -60,6 +60,28 @@ Secondary: Finance
 --- AGE RATING ---
 4+ (no objectionable content)
 
+--- SCREENSHOTS (Previews and Screenshots in App Store Connect) ---
+
+iPhone 6.7" (1290 x 2796) — upload min 3, recommend 5:
+  01-home.png       → homepage news feed
+  02-desk.png       → Investor Desk
+  03-portfolio.png  → watchlist
+  04-stock-vnm.png  → stock detail + disclaimer
+  05-notify.png     → optional Telegram alerts
+
+iPad 12.9" (2048 x 2732) — upload min 3 (app supports iPad):
+  Same file names in ipad-12.9/ folder
+
+Download zips (if hosted):
+  https://stocknews.orangecloud.vn/assets/releases/stocknews-app-store-iphone-screenshots.zip
+  https://stocknews.orangecloud.vn/assets/releases/stocknews-app-store-ipad-screenshots.zip
+  https://stocknews.orangecloud.vn/assets/releases/stocknews-app-store-screenshots-all.zip
+
+Generate locally: cd mobile && ./scripts/capture-app-store-screenshots.sh
+Full guide: mobile/store/APP_STORE_SCREENSHOTS.md
+
+App Previews (video): optional, 15–30 sec, same resolution — record in Xcode Simulator
+
 --- APP REVIEW INFORMATION ---
 First name: [Your name]
 Last name: [Your name]
