@@ -4,6 +4,7 @@
   "private": true,
   "description": "Stock News iOS and Android apps (Capacitor 6)",
   "scripts": {
+    "test": "node --test test/capacitor-versions.test.mjs",
     "sync": "npx cap sync",
     "copy": "npx cap copy",
     "android": "npx cap open android",
@@ -13,12 +14,12 @@
   "author": "Orange Cloud",
   "license": "UNLICENSED",
   "dependencies": {
-    "@capacitor/android": "^6.2.1",
+    "@capacitor/android": "^6.2.2",
     "@capacitor/app": "^6.0.3",
     "@capacitor/browser": "^6.0.6",
-    "@capacitor/cli": "^6.2.1",
-    "@capacitor/core": "^6.2.1",
-    "@capacitor/ios": "^6.2.1",
+    "@capacitor/cli": "^6.2.2",
+    "@capacitor/core": "^6.2.2",
+    "@capacitor/ios": "^6.2.2",
     "@capacitor/network": "^6.0.4",
     "@capacitor/splash-screen": "^6.0.4",
     "@capacitor/status-bar": "^6.0.3"
