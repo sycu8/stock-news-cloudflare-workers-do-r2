@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { headR2Object } from "../utils/resilience";
 import { sha256Hex } from "../utils/sha256";
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -16,7 +17,7 @@ export async function ensureOptimizedImageAsset(params: {
   const key = `optimized/${namespace}/${hash}.webp`;
   const publicPath = `/assets/${key}`;
 
-  const existing = await env.ASSETS.head(key);
+  const existing = await headR2Object(env.ASSETS, key);
   if (existing) return publicPath;
 
   try {

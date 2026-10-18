@@ -1,6 +1,7 @@
 import { NEWS_SOURCES } from "./config/sources";
 import type { CrawlRunRecord, DailyReport, MediaItemRecord, NewsSourceRecord, NormalizedArticle, StoredArticle } from "./types";
 import { formatCalendarDateVietnam, vietnamReportDayUtcIsoRange } from "./utils/date";
+import { resilientD1 } from "./utils/resilience";
 
 interface D1ResultRow {
   id: number;
@@ -87,6 +88,7 @@ interface SystemStatusSnapshotRow {
 }
 
 export async function upsertArticle(db: D1Database, article: NormalizedArticle): Promise<void> {
+  db = resilientD1(db);
   const imageUrl = article.imageUrl?.trim() || null;
   await db
     .prepare(
@@ -122,6 +124,7 @@ export async function listArticlesPublishedAfter(
   afterPublishedExclusive: string,
   limit: number
 ): Promise<StoredArticle[]> {
+  db = resilientD1(db);
   const bounds = vietnamReportDayUtcIsoRange(reportDate);
   if (!bounds) return [];
   const { start, end } = bounds;
@@ -153,6 +156,7 @@ export async function listArticlesPublishedAfter(
 }
 
 export async function getArticlesByDate(db: D1Database, reportDate: string): Promise<StoredArticle[]> {
+  db = resilientD1(db);
   const bounds = vietnamReportDayUtcIsoRange(reportDate);
   if (!bounds) return [];
   const { start, end } = bounds;
@@ -182,6 +186,7 @@ export async function getArticlesByDate(db: D1Database, reportDate: string): Pro
 
 /** Recent articles for sitemap URLs (canonical friendly article links). */
 export async function listRecentArticlesForSitemap(db: D1Database, limit: number): Promise<Array<{ url: string; title: string; publishedAt: string }>> {
+  db = resilientD1(db);
   const cap = Math.min(Math.max(1, limit), 4000);
   const { results } = await db
     .prepare(
@@ -198,6 +203,7 @@ export async function listRecentArticlesForSitemap(db: D1Database, limit: number
 
 /** Full rows for admin / bulk AI jobs (cap 500). */
 export async function listRecentStoredArticles(db: D1Database, limit: number): Promise<StoredArticle[]> {
+  db = resilientD1(db);
   const cap = Math.min(Math.max(1, limit), 500);
   const { results } = await db
     .prepare(
@@ -225,6 +231,7 @@ export async function listRecentStoredArticles(db: D1Database, limit: number): P
 
 /** Pagination for bulk jobs / admin exports. Limit ≤ 100 per call. */
 export async function listStoredArticlesPaged(db: D1Database, offset: number, limit: number): Promise<StoredArticle[]> {
+  db = resilientD1(db);
   const cap = Math.min(Math.max(1, limit), 100);
   const off = Math.max(0, offset);
   const { results } = await db
@@ -253,11 +260,13 @@ export async function listStoredArticlesPaged(db: D1Database, offset: number, li
 
 /** Total rows in articles (cheap COUNT for pagination). */
 export async function countAllArticles(db: D1Database): Promise<number> {
+  db = resilientD1(db);
   const row = await db.prepare(`SELECT COUNT(*) as cnt FROM articles`).first<{ cnt: number }>();
   return row?.cnt ?? 0;
 }
 
 export async function countArticlesForReportDay(db: D1Database, reportDate: string): Promise<number> {
+  db = resilientD1(db);
   const bounds = vietnamReportDayUtcIsoRange(reportDate);
   if (!bounds) return 0;
   const row = await db
@@ -273,6 +282,7 @@ export async function listArticlesForReportDayPaged(
   offset: number,
   limit: number
 ): Promise<StoredArticle[]> {
+  db = resilientD1(db);
   const bounds = vietnamReportDayUtcIsoRange(reportDate);
   if (!bounds) return [];
   const cap = Math.min(Math.max(1, limit), 100);
@@ -303,6 +313,7 @@ export async function listArticlesForReportDayPaged(
 }
 
 export async function getArticleByUrl(db: D1Database, url: string): Promise<StoredArticle | null> {
+  db = resilientD1(db);
   const row = await db
     .prepare(
       `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
@@ -335,7 +346,8 @@ export async function getArticlesByDatePaged(params: {
   sourceFilter?: string;
   q?: string;
 }): Promise<{ total: number; articles: StoredArticle[] }> {
-  const { db, reportDate, limit, offset, sourceFilter, q } = params;
+  const { db: rawDb, reportDate, limit, offset, sourceFilter, q } = params;
+  const db = resilientD1(rawDb);
   const bounds = vietnamReportDayUtcIsoRange(reportDate);
   if (!bounds) {
     return { total: 0, articles: [] };
@@ -394,6 +406,7 @@ export async function getArticlesByDatePaged(params: {
 }
 
 export async function setArticleImageUrl(db: D1Database, articleId: number, imageUrl: string | null): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(`UPDATE articles SET image_url = ?1, updated_at = datetime('now') WHERE id = ?2`)
     .bind(imageUrl, articleId)
@@ -405,6 +418,7 @@ export async function listArticlesNeedingEnrichment(
   reportDate: string,
   limit = 12
 ): Promise<StoredArticle[]> {
+  db = resilientD1(db);
   const bounds = vietnamReportDayUtcIsoRange(reportDate);
   if (!bounds) return [];
   const { start, end } = bounds;
@@ -439,6 +453,7 @@ export async function listArticlesNeedingEnrichment(
 }
 
 export async function setArticleSummary(db: D1Database, articleId: number, summaryVi: string): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(`UPDATE articles SET summary_vi = ?1, updated_at = datetime('now') WHERE id = ?2`)
     .bind(summaryVi, articleId)
@@ -449,6 +464,7 @@ export async function createManualArticle(
   db: D1Database,
   article: NormalizedArticle & { summaryVi?: string | null; imageUrl?: string | null }
 ): Promise<void> {
+  db = resilientD1(db);
   await upsertArticle(db, article);
   const saved = await getArticleByUrl(db, article.url);
   if (!saved) return;
@@ -461,6 +477,7 @@ export async function createManualArticle(
 }
 
 export async function listRecentManualArticles(db: D1Database, limit = 20): Promise<StoredArticle[]> {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT id, source_id, source_name, title, url, published_at, snippet, content_limited, summary_vi, image_url
@@ -499,6 +516,7 @@ export async function updateManualArticle(
     sourceName: string;
   }
 ): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(
       `UPDATE articles
@@ -527,10 +545,12 @@ export async function updateManualArticle(
 }
 
 export async function deleteManualArticle(db: D1Database, articleId: number): Promise<void> {
+  db = resilientD1(db);
   await db.prepare(`DELETE FROM articles WHERE id = ?1 AND source_id = 'cms-manual'`).bind(articleId).run();
 }
 
 export async function upsertDailyReport(db: D1Database, report: DailyReport): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(
       `INSERT INTO daily_reports (report_date, overview_vi, outlook_vi, assumptions_vi, article_count)
@@ -547,6 +567,7 @@ export async function upsertDailyReport(db: D1Database, report: DailyReport): Pr
 }
 
 export async function getDailyReport(db: D1Database, reportDate: string): Promise<DailyReport | null> {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT report_date, overview_vi, outlook_vi, assumptions_vi, article_count
@@ -575,6 +596,7 @@ export function getTodayDateKey(): string {
 }
 
 export async function ensureDefaultSources(db: D1Database): Promise<void> {
+  db = resilientD1(db);
   for (const source of NEWS_SOURCES) {
     await db
       .prepare(
@@ -613,6 +635,7 @@ export async function ensureDefaultSources(db: D1Database): Promise<void> {
 }
 
 export async function listSources(db: D1Database): Promise<NewsSourceRecord[]> {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT
@@ -638,6 +661,7 @@ export async function listSources(db: D1Database): Promise<NewsSourceRecord[]> {
 }
 
 export async function listEnabledSources(db: D1Database): Promise<NewsSourceRecord[]> {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT id, name, type, base_url, feed_url, list_url, enabled, allow_crawl, respect_robots, extractor_key, notes, is_default,
@@ -654,6 +678,7 @@ export async function createSource(
   db: D1Database,
   source: Omit<NewsSourceRecord, "lastRunStatus" | "lastRunAt" | "lastRunMessage" | "createdAt" | "updatedAt">
 ): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(
       `INSERT INTO news_sources
@@ -678,6 +703,7 @@ export async function createSource(
 }
 
 export async function toggleSource(db: D1Database, sourceId: string): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(`UPDATE news_sources SET enabled = CASE WHEN enabled = 1 THEN 0 ELSE 1 END, updated_at = datetime('now') WHERE id = ?1`)
     .bind(sourceId)
@@ -685,6 +711,7 @@ export async function toggleSource(db: D1Database, sourceId: string): Promise<vo
 }
 
 export async function deleteSource(db: D1Database, sourceId: string): Promise<void> {
+  db = resilientD1(db);
   await db.prepare(`DELETE FROM news_sources WHERE id = ?1 AND is_default = 0`).bind(sourceId).run();
 }
 
@@ -692,6 +719,7 @@ export async function logCrawlRun(
   db: D1Database,
   params: { sourceId: string; status: "success" | "error"; message: string; fetchedCount: number }
 ): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(`INSERT INTO crawl_runs (source_id, status, message, fetched_count) VALUES (?1, ?2, ?3, ?4)`)
     .bind(params.sourceId, params.status, params.message, params.fetchedCount)
@@ -699,6 +727,7 @@ export async function logCrawlRun(
 }
 
 export async function listRecentCrawlRuns(db: D1Database, limit = 20): Promise<CrawlRunRecord[]> {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT id, source_id, status, message, fetched_count, created_at
@@ -729,6 +758,7 @@ export async function listLatestFeedHealth(db: D1Database): Promise<
     checkedAt: string | null;
   }>
 > {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT
@@ -772,6 +802,7 @@ export async function insertSystemStatusSnapshot(
     articleCount: number;
   }
 ): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(
       `INSERT INTO system_status_snapshots
@@ -798,6 +829,7 @@ export async function getLatestSystemStatusSnapshot(db: D1Database): Promise<{
   articleCount: number;
   generatedAt: string;
 } | null> {
+  db = resilientD1(db);
   const row = await db
     .prepare(
       `SELECT id, report_date, feed_ok_count, feed_error_count, feed_total_count, ai_ok, article_count, generated_at
@@ -819,6 +851,7 @@ export async function getLatestSystemStatusSnapshot(db: D1Database): Promise<{
 }
 
 export async function upsertMediaItem(db: D1Database, item: MediaItemRecord): Promise<void> {
+  db = resilientD1(db);
   await db
     .prepare(
       `INSERT INTO media_items (kind, source_id, source_name, title, url, published_at, report_date, summary_vi, image_url)
@@ -846,6 +879,7 @@ export async function upsertMediaItem(db: D1Database, item: MediaItemRecord): Pr
 }
 
 export async function getMediaItemsByDate(db: D1Database, reportDate: string, limit = 12): Promise<MediaItemRecord[]> {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT id, kind, source_id, source_name, title, url, published_at, report_date, summary_vi, image_url
@@ -873,6 +907,7 @@ export async function getMediaItemsByDate(db: D1Database, reportDate: string, li
 
 /** Single media row by canonical URL (for AI Explain on brief/media cards). */
 export async function getMediaItemByUrl(db: D1Database, url: string): Promise<MediaItemRecord | null> {
+  db = resilientD1(db);
   const row = await db
     .prepare(
       `SELECT id, kind, source_id, source_name, title, url, published_at, report_date, summary_vi, image_url
@@ -940,6 +975,7 @@ export async function upsertNewsCluster(
     confidenceLabel: string;
   }
 ): Promise<number> {
+  db = resilientD1(db);
   await db
     .prepare(
       `INSERT INTO news_clusters (cluster_key, canonical_title, first_seen_at, last_seen_at, source_count, confidence_label)
@@ -967,6 +1003,7 @@ export async function upsertNewsCluster(
 }
 
 export async function linkArticleToCluster(db: D1Database, articleId: number, clusterId: number): Promise<void> {
+  db = resilientD1(db);
   if (!articleId || !clusterId) return;
   await db
     .prepare(
@@ -993,6 +1030,7 @@ export async function listClustersForReportDate(
     leadUrl: string | null;
   }>
 > {
+  db = resilientD1(db);
   const { results } = await db
     .prepare(
       `SELECT nc.id, nc.cluster_key, nc.canonical_title, nc.source_count, nc.confidence_label, nc.last_seen_at,

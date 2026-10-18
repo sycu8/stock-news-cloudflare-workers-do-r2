@@ -1,0 +1,313 @@
+import assert from "node:assert/strict";
+
+import { NEWS_SOURCES } from "../.tmp-test/config/sources.js";
+import { ensureDefaultSources } from "../.tmp-test/db.js";
+import { ensureOptimizedImageAsset } from "../.tmp-test/services/image-cache.js";
+import { HSX_REQUEST_TIMEOUT_MS, getHSXMarketSnapshot, getStockChartRange, getVNIndexChartPoints } from "../.tmp-test/services/hsx-market.js";
+import { loadInvestorSnapshotFromR2 } from "../.tmp-test/services/investor-intel.js";
+import { headR2Object, isTransientD1Error, readR2Object, retryDelayMs } from "../.tmp-test/utils/resilience.js";
+
+process.env.HSX_RETRY_BASE_MS = "0";
+
+function kv(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  return {
+    store,
+    async get(key, type) {
+      if (!store.has(key)) return null;
+      const raw = store.get(key);
+      return type === "json" ? JSON.parse(raw) : raw;
+    },
+    async put(key, value) {
+      store.set(key, value);
+    },
+    async delete(key) {
+      store.delete(key);
+    }
+  };
+}
+
+function chartBody(symbol, closePrice = 12) {
+  return {
+    success: true,
+    data: [
+      {
+        chartPoints: [
+          {
+            stockSymbol: symbol,
+            time: 1_700_000_000_000,
+            openPrice: 10,
+            closePrice,
+            highPrice: 13,
+            lowPrice: 9,
+            totalShare: 100
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function topBody() {
+  return {
+    success: true,
+    data: [{ id: "SSI", cell: ["SSI", "25.1", "1000", "1.2", "10"] }]
+  };
+}
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}
+
+function timeoutError() {
+  const error = new Error("The operation was aborted due to timeout");
+  error.name = "TimeoutError";
+  return error;
+}
+
+function chartRange(url) {
+  const parsed = new URL(String(url));
+  const from = Date.parse(`${parsed.searchParams.get("fromDate")}T00:00:00Z`);
+  const to = Date.parse(`${parsed.searchParams.get("toDate")}T00:00:00Z`);
+  const days = Math.round((to - from) / 86_400_000);
+  if (days <= 10) return "1w";
+  if (days <= 40) return "1m";
+  return "1y";
+}
+
+function point(symbol, closePrice) {
+  return {
+    symbol,
+    time: 1_700_000_000_000,
+    openPrice: 10,
+    closePrice,
+    highPrice: 13,
+    lowPrice: 9,
+    volume: 100
+  };
+}
+
+const originalFetch = globalThis.fetch;
+const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+const timeouts = [];
+AbortSignal.timeout = (ms) => {
+  timeouts.push(ms);
+  return originalTimeout(ms);
+};
+
+try {
+  assert.equal(retryDelayMs(0, () => 0), 0);
+  delete process.env.HSX_RETRY_BASE_MS;
+  assert.equal(retryDelayMs(0, () => 0), 250);
+  assert.equal(retryDelayMs(1, () => 0), 500);
+  assert.equal(retryDelayMs(2, () => 0), 1000);
+  assert.equal(retryDelayMs(0, () => 1), 325);
+  assert.ok(retryDelayMs(0, () => 0.5) > 250);
+  process.env.HSX_RETRY_BASE_MS = "0";
+
+  assert.equal(isTransientD1Error(new Error("D1 DB storage caused object to be reset")), true);
+  assert.equal(isTransientD1Error(new Error("no such table: news_sources")), false);
+  assert.equal(HSX_REQUEST_TIMEOUT_MS, 12_000);
+
+  {
+    const cache = kv();
+    let attempts = 0;
+    globalThis.fetch = async (url) => {
+      attempts += 1;
+      const href = String(url);
+      if (href.includes("top/main-volume")) {
+        if (attempts === 1) return jsonResponse({ success: false }, 530);
+        return jsonResponse(topBody());
+      }
+      throw new Error(`unexpected url ${href}`);
+    };
+    const snapshot = await getHSXMarketSnapshot({ CACHE: cache }, { ranges: [] });
+    assert.equal(attempts, 2);
+    assert.equal(snapshot.topVolume[0].symbol, "SSI");
+    assert.ok(timeouts.every((ms) => ms === HSX_REQUEST_TIMEOUT_MS));
+    assert.ok(cache.store.has("hsx:top-volume:last-good"));
+  }
+
+  {
+    timeouts.length = 0;
+    const cache = kv({
+      "hsx:vnindex:1y:last-good": JSON.stringify([point("VNINDEX", 88)])
+    });
+    const attempts = { "1y": 0, other: 0 };
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes("top/main-volume")) return jsonResponse(topBody());
+      const range = chartRange(href);
+      if (range === "1y") {
+        attempts["1y"] += 1;
+        throw timeoutError();
+      }
+      attempts.other += 1;
+      return jsonResponse(chartBody("VNINDEX", range === "1w" ? 11 : 22));
+    };
+    const snapshot = await getHSXMarketSnapshot({ CACHE: cache });
+    assert.equal(attempts["1y"], 3);
+    assert.equal(attempts.other, 2);
+    assert.equal(snapshot.vnindex1W[0].closePrice, 11);
+    assert.equal(snapshot.vnindex1M[0].closePrice, 22);
+    assert.equal(snapshot.vnindex1Y[0].closePrice, 88);
+    assert.equal(snapshot.topVolume[0].symbol, "SSI");
+    assert.ok(timeouts.includes(HSX_REQUEST_TIMEOUT_MS));
+  }
+
+  {
+    const fetchedAt = "2026-10-17T01:02:03.000Z";
+    const cache = kv({
+      "hsx:snapshot:last-good": JSON.stringify({
+        fetchedAt,
+        topVolume: [{ symbol: "NVL", price: "10", volume: "1", ratioPct: "1", lot: "1" }],
+        vnindex1W: [point("VNINDEX", 7)],
+        vnindex1M: [],
+        vnindex1Y: [point("VNINDEX", 9)],
+        statsUrl: "https://www.hsx.vn/stats",
+        chartUrl: "https://www.hsx.vn/chart"
+      })
+    });
+    globalThis.fetch = async () => {
+      throw timeoutError();
+    };
+    const snapshot = await getHSXMarketSnapshot({ CACHE: cache });
+    assert.equal(snapshot.fetchedAt, fetchedAt);
+    assert.equal(snapshot.topVolume[0].symbol, "NVL");
+    assert.equal(snapshot.vnindex1Y[0].closePrice, 9);
+  }
+
+  {
+    const cache = kv({
+      "hsx:stock-chart:NVL:1m:last-good": JSON.stringify([point("NVL", 41)])
+    });
+    const seen = [];
+    globalThis.fetch = async (url) => {
+      const symbol = new URL(String(url)).searchParams.get("symbolString").replace("|", "");
+      seen.push(symbol);
+      if (symbol === "NVL") throw timeoutError();
+      if (symbol === "SSI") return jsonResponse(chartBody("SSI", 33));
+      return jsonResponse({ success: false }, 522);
+    };
+    const [nvl, ssi, tpb] = await Promise.all([
+      getStockChartRange({ CACHE: cache }, "NVL", "1m"),
+      getStockChartRange({ CACHE: cache }, "SSI", "1m"),
+      getStockChartRange({ CACHE: cache }, "TPB", "1m")
+    ]);
+    assert.equal(nvl[0].closePrice, 41);
+    assert.equal(ssi[0].symbol, "SSI");
+    assert.equal(tpb.length, 0);
+    assert.ok(seen.includes("NVL") && seen.includes("SSI") && seen.includes("TPB"));
+  }
+
+  {
+    let attempts = 0;
+    globalThis.fetch = async () => {
+      attempts += 1;
+      return jsonResponse({ success: false }, 404);
+    };
+    const points = await getVNIndexChartPoints({ CACHE: kv() }, "1w");
+    assert.equal(points.length, 0);
+    assert.equal(attempts, 1);
+  }
+
+  {
+    const missing = new Error("The specified key does not exist.");
+    assert.equal(await readR2Object({ async get() { throw missing; } }, "intel/daily/2026-10-18.json"), null);
+    assert.equal(await headR2Object({ async head() { throw missing; } }, "optimized/article-thumb/x.webp"), null);
+    await assert.rejects(
+      () => readR2Object({ async get() { throw new Error("R2 unavailable"); } }, "k"),
+      /R2 unavailable/
+    );
+
+    const logged = [];
+    const originalError = console.error;
+    console.error = (...args) => logged.push(args.map(String).join(" "));
+    try {
+      const snap = await loadInvestorSnapshotFromR2(
+        { ASSETS: { async get() { throw missing; } } },
+        "2026-10-18"
+      );
+      assert.equal(snap, null);
+      assert.equal(logged.length, 0);
+    } finally {
+      console.error = originalError;
+    }
+
+    let fetched = 0;
+    globalThis.fetch = async () => {
+      fetched += 1;
+      return new Response("nope", { status: 404 });
+    };
+    const missed = await ensureOptimizedImageAsset({
+      env: {
+        ASSETS: {
+          async head() {
+            throw missing;
+          }
+        }
+      },
+      sourceUrl: "https://example.com/pic.jpg",
+      namespace: "article-thumb"
+    });
+    assert.equal(missed, "https://example.com/pic.jpg");
+    assert.ok(fetched > 0);
+
+    globalThis.fetch = async () => {
+      throw new Error("fetch should not run on a cache hit");
+    };
+    const hit = await ensureOptimizedImageAsset({
+      env: { ASSETS: { async head() { return { key: "present" }; } } },
+      sourceUrl: "https://example.com/pic.jpg",
+      namespace: "article-thumb"
+    });
+    assert.match(hit, /^\/assets\/optimized\/article-thumb\/.+\.webp$/);
+  }
+
+  {
+    const reset = d1Stub("D1 DB storage caused object to be reset", 1);
+    await ensureDefaultSources(reset.db);
+    assert.equal(reset.runs, NEWS_SOURCES.length + 1);
+
+    const healthy = d1Stub("D1 DB storage caused object to be reset", 0);
+    await ensureDefaultSources(healthy.db);
+    assert.equal(healthy.runs, NEWS_SOURCES.length);
+
+    const permanent = d1Stub("no such table: news_sources", 5);
+    await assert.rejects(() => ensureDefaultSources(permanent.db), /no such table/);
+    assert.equal(permanent.runs, 1);
+  }
+
+  console.log("upstream resilience tests passed");
+} finally {
+  globalThis.fetch = originalFetch;
+  AbortSignal.timeout = originalTimeout;
+}
+
+function d1Stub(message, failTimes) {
+  let runs = 0;
+  const db = {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async run() {
+              runs += 1;
+              if (runs <= failTimes) throw new Error(message);
+              return { success: true };
+            }
+          };
+        }
+      };
+    }
+  };
+  return {
+    db,
+    get runs() {
+      return runs;
+    }
+  };
+}
