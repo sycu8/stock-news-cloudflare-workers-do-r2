@@ -111,7 +111,8 @@ export async function getGoldMarketSnapshot(env: Env): Promise<GoldMarketSnapsho
     const res = await fetch(sourceUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; vn-market-worker/1.0)"
-      }
+      },
+      signal: AbortSignal.timeout(12000)
     });
     if (!res.ok) throw new Error(`gold page failed: ${res.status}`);
     const html = await res.text();
@@ -227,7 +228,7 @@ async function fetchFxBodyWithFallback(date: string): Promise<{ date?: string; u
   ];
   for (const url of urls) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
       if (!res.ok) continue;
       return (await res.json()) as { date?: string; usd?: Record<string, number> };
     } catch {

@@ -41,7 +41,8 @@ async function getTopVolume(env: Env): Promise<HSXTopVolumeItem[]> {
 
   try {
     const resp = await fetch("https://api.hsx.vn/mk/api/v1/market/top/main-volume", {
-      headers: hsxHeaders()
+      headers: hsxHeaders(),
+      signal: AbortSignal.timeout(12000)
     });
     if (!resp.ok) throw new Error(`HSX top volume failed: ${resp.status}`);
     const data = (await resp.json()) as {
@@ -96,7 +97,8 @@ async function getChartRange(
       symbolString: `${symbol}|`
     });
     const resp = await fetch(`https://api.hsx.vn/mk/api/v1/market/basic-chart?${qs.toString()}`, {
-      headers: hsxHeaders()
+      headers: hsxHeaders(),
+      signal: AbortSignal.timeout(12000)
     });
     if (!resp.ok) throw new Error(`HSX ${symbol} ${range} failed: ${resp.status}`);
     const body = (await resp.json()) as {
