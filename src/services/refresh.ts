@@ -176,15 +176,36 @@ async function loadMarketSnapshotsForFeed(
   }
 
   const hsxRanges = hsxMode === "light" ? (["1w"] as const) : (["1w", "1m", "1y"] as const);
-  const [marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot] = await Promise.all([
+  const bundle = await loadFreshMarketBundle(env, hsxRanges);
+  await env.CACHE.put(MARKET_BUNDLE_CACHE_KEY, JSON.stringify(bundle), { expirationTtl: 60 * 15 });
+  return bundle;
+}
+
+async function loadFreshMarketBundle(
+  env: Env,
+  hsxRanges: readonly ("1w" | "1m" | "1y")[]
+): Promise<{
+  marketSnapshot: CafeFMarketSnapshot | null;
+  hsxMarketSnapshot: HSXMarketSnapshot | null;
+  fxMarketSnapshot: FxMarketSnapshot | null;
+  goldMarketSnapshot: GoldMarketSnapshot | null;
+}> {
+  const [marketResult, hsxResult, fxResult, goldResult] = await Promise.allSettled([
     getCafeFMarketSnapshot(env),
     getHSXMarketSnapshot(env, { ranges: [...hsxRanges] }),
     getFxMarketSnapshot(env),
     getGoldMarketSnapshot(env)
   ]);
-  const bundle = { marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot };
-  await env.CACHE.put(MARKET_BUNDLE_CACHE_KEY, JSON.stringify(bundle), { expirationTtl: 60 * 15 });
-  return bundle;
+  if (marketResult.status === "rejected") console.error("CafeF snapshot failed:", marketResult.reason);
+  if (hsxResult.status === "rejected") console.error("HSX snapshot failed:", hsxResult.reason);
+  if (fxResult.status === "rejected") console.error("FX snapshot failed:", fxResult.reason);
+  if (goldResult.status === "rejected") console.error("Gold snapshot failed:", goldResult.reason);
+  return {
+    marketSnapshot: marketResult.status === "fulfilled" ? marketResult.value : null,
+    hsxMarketSnapshot: hsxResult.status === "fulfilled" ? hsxResult.value : null,
+    fxMarketSnapshot: fxResult.status === "fulfilled" ? fxResult.value : null,
+    goldMarketSnapshot: goldResult.status === "fulfilled" ? goldResult.value : null
+  };
 }
 
 async function runLimitedArticleEnrichment(env: Env, reportDate: string): Promise<void> {
@@ -269,11 +290,10 @@ export async function refreshDailyNews(env: Env): Promise<RefreshResult> {
   });
   const dedupedArticles = collapseDuplicateNews(finalizedArticles);
   const reportHistory = await getReportHistory(env, reportDate);
-  const [marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot] = await Promise.all([
-    getCafeFMarketSnapshot(env),
-    getHSXMarketSnapshot(env),
-    getFxMarketSnapshot(env),
-    getGoldMarketSnapshot(env)
+  const { marketSnapshot, hsxMarketSnapshot, fxMarketSnapshot, goldMarketSnapshot } = await loadFreshMarketBundle(env, [
+    "1w",
+    "1m",
+    "1y"
   ]);
   const cachePayload: DailyCachePayload = {
     report,

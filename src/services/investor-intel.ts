@@ -1,6 +1,7 @@
 import type { DailyReport, Env, HSXMarketSnapshot, HSXTopVolumeItem, HSXVNIndexPoint, StoredArticle } from "../types";
 import type { SentimentSnapshot } from "./sentiment";
 import { analyzeSentimentForArticles, classifySentimentText } from "./sentiment";
+import { readR2Object } from "../utils/resilience";
 
 const INTEL_INDEX_KEY = "intel:index_dates";
 const INTEL_R2_PREFIX = "intel/daily/";
@@ -175,7 +176,7 @@ export async function persistInvestorDailySnapshot(env: Env, snapshot: InvestorD
 
 export async function loadInvestorSnapshotFromR2(env: Env, reportDate: string): Promise<InvestorDailySnapshot | null> {
   if (!env.ASSETS) return null;
-  const obj = await env.ASSETS.get(`${INTEL_R2_PREFIX}${reportDate}.json`);
+  const obj = await readR2Object(env.ASSETS, `${INTEL_R2_PREFIX}${reportDate}.json`);
   if (!obj) return null;
   try {
     const t = await obj.text();

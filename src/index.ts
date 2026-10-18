@@ -30,6 +30,7 @@ import { renderNotifyPage } from "./ui/notify";
 import { renderStatusPage } from "./ui/status";
 import { renderCalendarPage } from "./ui/calendar";
 import { getHSXMarketSnapshot, getVNIndexChartPoints } from "./services/hsx-market";
+import { readR2Object } from "./utils/resilience";
 import { buildStockInsight } from "./services/stock-insight";
 import {
   broadcastTelegramMessage,
@@ -875,7 +876,7 @@ app.get("/assets/*", async (c) => {
     return c.text("Assets not configured", 500);
   }
 
-  const obj = await c.env.ASSETS.get(key);
+  const obj = await readR2Object(c.env.ASSETS, key);
   if (!obj) {
     // Friendly fallback for brand logo during rollout.
     if (key === LOGO_ASSET_KEY) {

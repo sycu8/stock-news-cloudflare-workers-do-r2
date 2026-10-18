@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { headR2Object } from "../utils/resilience";
 import { sha256Hex } from "../utils/sha256";
 import { workersAiGatewayOptions, workersAiImageModel } from "./ai-config";
 
@@ -16,7 +17,7 @@ export async function ensureGeneratedThumbnail(params: {
   const publicPath = `/assets/${key}`;
 
   // Avoid regenerating if it already exists.
-  const existing = await env.ASSETS.head(key);
+  const existing = await headR2Object(env.ASSETS, key);
   if (existing) {
     return { key, publicPath };
   }
