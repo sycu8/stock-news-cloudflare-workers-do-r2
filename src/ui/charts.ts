@@ -104,7 +104,7 @@ function renderChartsHtml(input: {
           <div class="legendRow"><span class="dot neu"></span><span>Trung tính</span><span class="muted">${neuPct}%</span></div>
           <div class="legendRow"><span class="dot neg"></span><span>Tiêu cực</span><span class="muted">${negPct}%</span></div>
         </div>
-        <div class="stackBar" aria-label="Sentiment distribution">
+        <div class="stackBar" role="img" aria-label="Sentiment distribution">
           <span class="seg pos" style="width:${posPct}%"></span>
           <span class="seg neu" style="width:${neuPct}%"></span>
           <span class="seg neg" style="width:${negPct}%"></span>

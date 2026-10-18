@@ -408,7 +408,7 @@ export function renderHomePage({
           <span class="historyKpi">Tiêu cực ${negPct}%</span>
           <span class="historyKpi">Điểm ${sentiment.score}</span>
         </div>
-        <div class="stackBar" aria-label="History sentiment distribution">
+        <div class="stackBar" role="img" aria-label="History sentiment distribution">
           <span class="seg pos" style="width:${posPct}%"></span>
           <span class="seg neu" style="width:${neuPct}%"></span>
           <span class="seg neg" style="width:${negPct}%"></span>
@@ -652,6 +652,7 @@ export function renderHomePage({
       .meta { color: var(--muted); font-size: 0.86rem; }
       .tag { color: #b54708; font-size: 0.86rem; }
       a { color: var(--primary); text-decoration: none; }
+      .disclaimer a, .meta a { text-decoration: underline; text-underline-offset: 2px; }
       a:hover { text-decoration: underline; }
       .cardActions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
       .source-link,.aiExplainBtn{
