@@ -159,6 +159,8 @@ In `.dev.vars`:
 - **Optional Workers AI overrides**: `WORKERS_AI_MODEL_SUMMARY`, `WORKERS_AI_MODEL_EXPLAIN` (defaults to summary model if unset), `WORKERS_AI_MODEL_IMAGE` (thumbnail generation; default SDXL Lightning)
 - `AI_GATEWAY_SKIP_CACHE`: set to `false` to allow gateway-side cache on Workers AI runs (default skips cache)
 - `ALLOW_ADMIN_QUERY_TOKEN`: optional emergency compatibility flag. Keep unset/`false`; admin should use `/admin/login` cookie auth or the `x-admin-token` header so secrets do not leak into URLs/logs.
+- Optional machine OAuth: `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` enable `client_credentials` on `POST /oauth/token`. Authorization-code login stays disabled.
+- Optional Web Push: `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (base64url). Without them, subscribe stays unavailable.
 
 Set production secrets:
 
@@ -190,7 +192,8 @@ Current key bindings in `wrangler.toml`:
 - `GET /`: homepage includes a [`Link` header (RFC 8288)](https://www.rfc-editor.org/rfc/rfc8288) for agent discovery (`api-catalog`, `service-doc`, `service-desc`, `describedby`).
 - `GET /.well-known/api-catalog`: [RFC 9727](https://www.rfc-editor.org/rfc/rfc9727) API catalog as `application/linkset+json` (profile `https://www.rfc-editor.org/info/rfc9727`). The top-level `linkset` array has **one object per public API**; each object sets `anchor` to that API’s URL and includes `service-desc` (shared `openapi.json`), `service-doc` (`/docs/api#…`), and `status` (`/health`). `HEAD` uses the same `Content-Type` and `Link` header (Section 2).
 - `GET /.well-known/oauth-protected-resource`: [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) OAuth protected resource metadata (`application/json`). Includes `resource` (this host’s HTTPS origin), `authorization_servers` (defaults to the same origin so it pairs with `/.well-known/oauth-authorization-server`; override with Worker var `OAUTH_AUTHORIZATION_SERVERS` as comma-separated issuer URLs), `scopes_supported`, and `bearer_methods_supported`. Some JSON `401` admin responses include `WWW-Authenticate: Bearer resource_metadata="…"` (RFC 9728 §5).
-- `GET /.well-known/openid-configuration` / `GET /.well-known/oauth-authorization-server` / `GET /.well-known/jwks.json`: discovery stubs for the same-host “issuer” (token and authorize endpoints return `501` until a real OAuth deployment is wired).
+- `GET /.well-known/openid-configuration` / `GET /.well-known/oauth-authorization-server` / `GET /.well-known/jwks.json`: discovery for the same-host issuer. `GET /oauth/authorize` stays `501`. `POST /oauth/token` issues `client_credentials` tokens only when `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` are set; otherwise it returns `400`.
+- `POST /mcp`: JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`). `GET /api/clusters`, `GET /api/rum/summary`, and `GET /api/push/vapid` are public reads.
 - `GET /docs/api`: short human-readable list of public APIs.
 - **WebMCP** ([spec](https://webmachinelearning.github.io/webmcp/)): the home page registers `navigator.modelContext.registerTool()` tools at the end of the document (with retries for late `modelContext`), including navigation, `/api/news/today` fetch, scroll targets, and AI Explain.
 - `GET /openapi.json`: minimal OpenAPI 3.1 document for public read endpoints.
