@@ -28,7 +28,8 @@ async function fetchCafeFMarketSnapshot(): Promise<CafeFMarketSnapshot> {
     headers: {
       "User-Agent": "vn-market-daily-worker/1.0 (+Cloudflare Worker)",
       Accept: "text/html,application/xhtml+xml"
-    }
+    },
+    signal: AbortSignal.timeout(12000)
   });
   if (!resp.ok) {
     throw new Error(`CafeF fetch failed: ${resp.status}`);
