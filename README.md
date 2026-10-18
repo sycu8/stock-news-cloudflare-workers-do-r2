@@ -213,6 +213,8 @@ Current key bindings in `wrangler.toml`:
 
 ## Production Deployment
 
+Pushes to `main` deploy `vn-market-daily-worker` with [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml). The workflow uses repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (Workers edit token for account `4c15704ef706b9c8954cd6f9feb678d8`). It does not apply D1 migrations. There is no Cloudflare Workers Builds or Pages project for this site; the custom domain stays attached in the dashboard.
+
 1. Verify `wrangler.toml` account and all bindings.
 2. Ensure remote migrations are applied:
    - `npm run migrate:remote`
