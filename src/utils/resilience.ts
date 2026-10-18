@@ -121,7 +121,12 @@ export async function withD1Retry<T>(operation: () => Promise<T>): Promise<T> {
   }
 }
 
-type StmtMethod = "run" | "all" | "first" | "raw";
+type ReadMethod = "all" | "first" | "raw";
+
+function invoke(stmt: D1PreparedStatement, method: "run" | ReadMethod, args: unknown[]): Promise<unknown> {
+  const fn = stmt[method] as (...a: unknown[]) => Promise<unknown>;
+  return fn.apply(stmt, args);
+}
 
 function wrapStatement(db: D1Database, query: string, binds: unknown[] | null): D1PreparedStatement {
   const create = (): D1PreparedStatement => {
@@ -133,14 +138,14 @@ function wrapStatement(db: D1Database, query: string, binds: unknown[] | null): 
       if (prop === "bind") {
         return (...next: unknown[]) => wrapStatement(db, query, next);
       }
-      if (prop === "run" || prop === "all" || prop === "first" || prop === "raw") {
-        const method = prop as StmtMethod;
-        return (...args: unknown[]) =>
-          withD1Retry(() => {
-            const stmt = create();
-            const fn = stmt[method] as (...a: unknown[]) => Promise<unknown>;
-            return fn.apply(stmt, args);
-          });
+      // INSERT/UPDATE/DELETE go through run(). Retrying those can double-toggle,
+      // insert a second row, or surface an error after the first write committed.
+      if (prop === "run") {
+        return (...args: unknown[]) => invoke(create(), "run", args);
+      }
+      if (prop === "all" || prop === "first" || prop === "raw") {
+        const method = prop as ReadMethod;
+        return (...args: unknown[]) => withD1Retry(() => invoke(create(), method, args));
       }
       const value = Reflect.get(target, prop, receiver);
       return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
@@ -148,7 +153,7 @@ function wrapStatement(db: D1Database, query: string, binds: unknown[] | null): 
   }) as D1PreparedStatement;
 }
 
-/** Wrap a D1 binding so each statement is retried once on a storage reset or other transient error. */
+/** Wrap a D1 binding so read statements are retried once. Writes are not retried. */
 export function resilientD1(db: D1Database): D1Database {
   if ((db as D1Database & { [D1_RETRY]?: boolean })[D1_RETRY]) return db;
   return new Proxy(db, {
