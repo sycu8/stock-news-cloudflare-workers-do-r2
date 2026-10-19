@@ -166,18 +166,6 @@ export const MEDIA_SOURCES = [
     url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCv-lMahkCfXzmNzk8uijT8A"
   },
   {
-    id: "reuters-business",
-    name: "Reuters Business",
-    type: "rss" as const,
-    url: "http://feeds.reuters.com/reuters/businessNews"
-  },
-  {
-    id: "reuters-company",
-    name: "Reuters Company News",
-    type: "rss" as const,
-    url: "http://feeds.reuters.com/reuters/companyNews"
-  },
-  {
     id: "cnbc-us-markets",
     name: "CNBC U.S. Markets",
     type: "rss" as const,
