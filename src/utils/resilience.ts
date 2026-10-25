@@ -1,6 +1,8 @@
 /**
  * Shared retry, R2 miss, and D1 reset handling for upstream flakes.
- * Missing R2 keys are cache misses. D1 storage resets are retried once.
+ * Missing R2 keys are cache misses: head first, and warn once per isolate if the
+ * binding throws "key does not exist" instead of returning null. D1 storage resets
+ * are retried once.
  */
 
 const DEFAULT_RETRY_ATTEMPTS = 3;
@@ -71,16 +73,49 @@ export async function withRetry<T>(
   throw lastError;
 }
 
+export function errorMessage(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error instanceof Error) {
+    const cause = "cause" in error && error.cause ? ` ${errorMessage(error.cause)}` : "";
+    return `${error.name}: ${error.message}${cause}`;
+  }
+  if (error && typeof error === "object") {
+    const record = error as { message?: unknown; code?: unknown; name?: unknown };
+    const parts = [record.name, record.code, record.message].filter((part) => part != null).map(String);
+    if (parts.length > 0) return parts.join(" ");
+  }
+  return String(error ?? "");
+}
+
 export function isMissingR2Key(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /specified key does not exist|nosuchkey|object not found/i.test(message);
+  return /specified key does not exist|nosuchkey|object not found/i.test(errorMessage(error));
+}
+
+let missingR2KeyWarned = false;
+
+/** One warning per isolate when R2 throws for a missing key instead of returning null. */
+export function warnMissingR2KeyOnce(key: string): void {
+  if (missingR2KeyWarned) return;
+  missingR2KeyWarned = true;
+  console.warn(
+    `R2 key does not exist (${key}); treating further missing keys as cache misses for the rest of this run`
+  );
+}
+
+export function resetMissingR2KeyWarningForTests(): void {
+  missingR2KeyWarned = false;
 }
 
 export async function readR2Object(bucket: R2Bucket, key: string): Promise<R2ObjectBody | null> {
+  const existing = await headR2Object(bucket, key);
+  if (!existing) return null;
   try {
     return await bucket.get(key);
   } catch (error) {
-    if (isMissingR2Key(error)) return null;
+    if (isMissingR2Key(error)) {
+      warnMissingR2KeyOnce(key);
+      return null;
+    }
     throw error;
   }
 }
@@ -89,7 +124,10 @@ export async function headR2Object(bucket: R2Bucket, key: string): Promise<R2Obj
   try {
     return await bucket.head(key);
   } catch (error) {
-    if (isMissingR2Key(error)) return null;
+    if (isMissingR2Key(error)) {
+      warnMissingR2KeyOnce(key);
+      return null;
+    }
     throw error;
   }
 }
