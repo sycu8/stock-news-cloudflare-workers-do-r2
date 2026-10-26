@@ -1,15 +1,6 @@
 import type { Env } from "../types";
-import { headR2Object } from "../utils/resilience";
+import { r2ObjectExists } from "../utils/resilience";
 import { sha256Hex } from "../utils/sha256";
-import {
-  discardResponseBody,
-  isImageTransformErrorResponse,
-  isImageTransformQuotaError,
-  isImageTransformQuotaResponse,
-  isImageTransformSkipped,
-  noteImageTransformFailureOnce,
-  noteImageTransformQuotaExhausted
-} from "./image-transform-guard";
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -19,11 +10,22 @@ const PLAIN_IMAGE_HEADERS = {
 };
 
 type RemoteImage = { bytes: ArrayBuffer; contentType: string };
+type Namespace = "article-thumb" | "media-thumb";
 
+/**
+ * Mirror a remote image into R2 and return its `/assets/...` path.
+ *
+ * Cloudflare Images transformations are no longer used: the original bytes are
+ * stored under `original/<namespace>/<hash>`. WebP files written earlier under
+ * `optimized/<namespace>/<hash>.webp` are still reused when present.
+ *
+ * Existence checks use `r2ObjectExists` (a 1-item list) instead of `head`, so a
+ * normal cache miss is not recorded as an `r2_head` error span.
+ */
 export async function ensureOptimizedImageAsset(params: {
   env: Env;
   sourceUrl: string;
-  namespace: "article-thumb" | "media-thumb";
+  namespace: Namespace;
 }): Promise<string | null> {
   const { env, sourceUrl, namespace } = params;
   if (!env.ASSETS) return null;
@@ -33,96 +35,17 @@ export async function ensureOptimizedImageAsset(params: {
   const optimizedKey = `optimized/${namespace}/${hash}.webp`;
   const originalKey = `original/${namespace}/${hash}`;
 
-  const optimizedHit = await headR2Object(env.ASSETS, optimizedKey);
-  if (optimizedHit) return `/assets/${optimizedKey}`;
-
   try {
-    if (isImageTransformSkipped()) {
-      return (await readOrStoreOriginal(env, sourceUrl, namespace, originalKey)) ?? sourceUrl;
-    }
+    if (await r2ObjectExists(env.ASSETS, optimizedKey)) return `/assets/${optimizedKey}`;
+    if (await r2ObjectExists(env.ASSETS, originalKey)) return `/assets/${originalKey}`;
 
-    const stored = await cacheRemoteImage(env, sourceUrl, namespace, optimizedKey, originalKey);
-    return stored ?? sourceUrl;
+    const plain = await fetchPlainImage(sourceUrl);
+    if (!plain) return sourceUrl;
+    return (await storeOriginal(env, originalKey, plain, sourceUrl, namespace)) ?? sourceUrl;
   } catch (error) {
-    if (isImageTransformQuotaError(error)) noteImageTransformQuotaExhausted();
-    else noteImageTransformFailureOnce(error);
+    console.warn("Image cache failed; using the source URL:", error);
     return sourceUrl;
   }
-}
-
-async function readOrStoreOriginal(
-  env: Env,
-  sourceUrl: string,
-  namespace: "article-thumb" | "media-thumb",
-  originalKey: string
-): Promise<string | null> {
-  const existing = await headR2Object(env.ASSETS!, originalKey);
-  if (existing) return `/assets/${originalKey}`;
-  const plain = await fetchPlainImage(sourceUrl);
-  if (!plain) return null;
-  return storeOriginal(env, originalKey, plain, sourceUrl, namespace);
-}
-
-async function cacheRemoteImage(
-  env: Env,
-  sourceUrl: string,
-  namespace: "article-thumb" | "media-thumb",
-  optimizedKey: string,
-  originalKey: string
-): Promise<string | null> {
-  let plain: RemoteImage | null = null;
-
-  if (env.IMAGES && !isImageTransformSkipped()) {
-    plain = await fetchPlainImage(sourceUrl);
-    if (plain) {
-      const webp = await transformWithImagesBinding(env, plain.bytes);
-      if (webp) {
-        const path = await storeWebp(env, optimizedKey, webp, sourceUrl, namespace);
-        if (path) return path;
-      }
-      if (isImageTransformSkipped()) {
-        return storeOriginal(env, originalKey, plain, sourceUrl, namespace);
-      }
-    }
-  }
-
-  if (!isImageTransformSkipped()) {
-    const viaCf = await fetchViaCfImageResize(sourceUrl);
-    if (viaCf) {
-      const path = await storeWebp(env, optimizedKey, viaCf, sourceUrl, namespace);
-      if (path) return path;
-    }
-  }
-
-  if (plain) return storeOriginal(env, originalKey, plain, sourceUrl, namespace);
-  // The Images binding path already downloaded the origin. A second plain fetch
-  // would only repeat a miss.
-  if (env.IMAGES) return null;
-
-  const fallback = await fetchPlainImage(sourceUrl);
-  if (!fallback) return null;
-  return storeOriginal(env, originalKey, fallback, sourceUrl, namespace);
-}
-
-async function storeWebp(
-  env: Env,
-  key: string,
-  bytes: ArrayBuffer,
-  sourceUrl: string,
-  namespace: "article-thumb" | "media-thumb"
-): Promise<string | null> {
-  await env.ASSETS!.put(key, bytes, {
-    httpMetadata: { contentType: "image/webp", cacheControl: "public, max-age=31536000, immutable" },
-    customMetadata: {
-      kind: "optimized_remote_image",
-      sourceUrl: sourceUrl.slice(0, 512),
-      namespace
-    }
-  });
-  void tryStoreInHostedImages(env, bytes, key.split("/").pop()?.replace(/\.webp$/, "") ?? key, sourceUrl, namespace).catch(
-    () => {}
-  );
-  return `/assets/${key}`;
 }
 
 async function storeOriginal(
@@ -130,7 +53,7 @@ async function storeOriginal(
   key: string,
   image: RemoteImage,
   sourceUrl: string,
-  namespace: "article-thumb" | "media-thumb"
+  namespace: Namespace
 ): Promise<string | null> {
   await env.ASSETS!.put(key, image.bytes, {
     httpMetadata: { contentType: image.contentType, cacheControl: "public, max-age=31536000, immutable" },
@@ -141,37 +64,6 @@ async function storeOriginal(
     }
   });
   return `/assets/${key}`;
-}
-
-async function tryStoreInHostedImages(
-  env: Env,
-  bytes: ArrayBuffer,
-  hash: string,
-  sourceUrl: string,
-  namespace: "article-thumb" | "media-thumb"
-): Promise<string | null> {
-  const accountHash = env.CF_IMAGES_ACCOUNT_HASH?.trim();
-  if (!env.IMAGES?.hosted || !accountHash) return null;
-  try {
-    const meta = await env.IMAGES.hosted.upload(bytes, {
-      id: hash,
-      filename: `${namespace}-${hash}.webp`,
-      requireSignedURLs: false,
-      metadata: {
-        kind: "optimized_remote_image",
-        namespace,
-        sourceUrl: sourceUrl.slice(0, 512)
-      }
-    });
-    return meta.id;
-  } catch (error) {
-    const msg = error instanceof Error ? error.message.toLowerCase() : "";
-    if (msg.includes("already") || msg.includes("exists") || msg.includes("conflict")) {
-      return hash;
-    }
-    console.warn("Hosted Images upload failed:", error);
-    return null;
-  }
 }
 
 async function fetchPlainImage(sourceUrl: string): Promise<RemoteImage | null> {
@@ -198,95 +90,11 @@ async function fetchPlainImage(sourceUrl: string): Promise<RemoteImage | null> {
   return { bytes, contentType };
 }
 
-async function transformWithImagesBinding(env: Env, bytes: ArrayBuffer): Promise<ArrayBuffer | null> {
-  if (!env.IMAGES || isImageTransformSkipped()) return null;
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(new Uint8Array(bytes));
-      controller.close();
-    }
-  });
-
+async function discardResponseBody(response: { body?: { cancel?: () => Promise<void> | void } | null }): Promise<void> {
   try {
-    const result = await env.IMAGES
-      .input(stream as Parameters<NonNullable<Env["IMAGES"]>["input"]>[0])
-      .transform({ width: 1200, fit: "scale-down" })
-      .output({ format: "image/webp", quality: 82, anim: false });
-    const response = result.response() as unknown as Response;
-    if (isImageTransformQuotaResponse(response)) {
-      noteImageTransformQuotaExhausted();
-      await discardResponseBody(response);
-      return null;
-    }
-    if (isImageTransformErrorResponse(response)) {
-      noteImageTransformFailureOnce(response.headers.get("cf-resized"));
-      await discardResponseBody(response);
-      return null;
-    }
-    if (!response.ok) {
-      await discardResponseBody(response);
-      return null;
-    }
-    const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
-    if (!contentType.startsWith("image/")) {
-      await discardResponseBody(response);
-      return null;
-    }
-    const optimized = await response.arrayBuffer();
-    if (optimized.byteLength < 128 || optimized.byteLength > MAX_IMAGE_BYTES) return null;
-    return optimized;
-  } catch (error) {
-    if (isImageTransformQuotaError(error)) noteImageTransformQuotaExhausted();
-    else noteImageTransformFailureOnce(error);
-    return null;
-  }
-}
-
-async function fetchViaCfImageResize(sourceUrl: string): Promise<ArrayBuffer | null> {
-  if (isImageTransformSkipped()) return null;
-  try {
-    const response = await fetch(sourceUrl, {
-      headers: {
-        "User-Agent": "vn-market-daily-worker/1.0 (+Cloudflare Worker)",
-        Accept: "image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8"
-      },
-      cf: {
-        image: {
-          width: 1200,
-          fit: "scale-down",
-          quality: 82,
-          format: "webp",
-          metadata: "none",
-          anim: false
-        }
-      }
-    });
-    if (isImageTransformQuotaResponse(response)) {
-      noteImageTransformQuotaExhausted();
-      await discardResponseBody(response);
-      return null;
-    }
-    if (isImageTransformErrorResponse(response)) {
-      noteImageTransformFailureOnce(response.headers.get("cf-resized"));
-      await discardResponseBody(response);
-      return null;
-    }
-    if (!response.ok) {
-      await discardResponseBody(response);
-      return null;
-    }
-    const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
-    if (!contentType.startsWith("image/")) {
-      await discardResponseBody(response);
-      return null;
-    }
-    const bytes = await response.arrayBuffer();
-    if (bytes.byteLength < 128 || bytes.byteLength > MAX_IMAGE_BYTES) return null;
-    return bytes;
-  } catch (error) {
-    if (isImageTransformQuotaError(error)) noteImageTransformQuotaExhausted();
-    else noteImageTransformFailureOnce(error);
-    return null;
+    await response.body?.cancel?.();
+  } catch {
+    // The caller is not reading this body.
   }
 }
 
