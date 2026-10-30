@@ -1,6 +1,6 @@
 /**
  * Shared retry, R2 miss, and D1 reset handling for upstream flakes.
- * Missing R2 keys are cache misses: head first, and warn once per isolate if the
+ * Missing R2 keys are cache misses: get returns null (no head pre-check), and warn once if the
  * binding throws "key does not exist" instead of returning null. D1 storage resets
  * are retried once.
  */
@@ -106,9 +106,13 @@ export function resetMissingR2KeyWarningForTests(): void {
   missingR2KeyWarned = false;
 }
 
+/**
+ * Read an R2 object. A missing key is a normal cache miss and returns null.
+ * `get` already returns null for a missing key, so no `head` pre-check is made
+ * (that pre-check produced an `r2_head` error span for every miss). Real R2
+ * failures are still thrown to the caller.
+ */
 export async function readR2Object(bucket: R2Bucket, key: string): Promise<R2ObjectBody | null> {
-  const existing = await headR2Object(bucket, key);
-  if (!existing) return null;
   try {
     return await bucket.get(key);
   } catch (error) {
@@ -120,14 +124,16 @@ export async function readR2Object(bucket: R2Bucket, key: string): Promise<R2Obj
   }
 }
 
-export async function headR2Object(bucket: R2Bucket, key: string): Promise<R2Object | null> {
+/**
+ * True when `key` exists. Uses a 1-item `list` on the exact key instead of
+ * `head`, so a miss is an empty (successful) listing rather than an error span.
+ */
+export async function r2ObjectExists(bucket: R2Bucket, key: string): Promise<boolean> {
   try {
-    return await bucket.head(key);
+    const listed = await bucket.list({ prefix: key, limit: 1 });
+    return listed.objects.some((obj) => obj.key === key);
   } catch (error) {
-    if (isMissingR2Key(error)) {
-      warnMissingR2KeyOnce(key);
-      return null;
-    }
+    if (isMissingR2Key(error)) return false;
     throw error;
   }
 }
